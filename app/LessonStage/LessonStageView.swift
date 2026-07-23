@@ -10,6 +10,7 @@ struct LessonStageView: View {
     // driven from a script without a tap. Also the hook UI tests will want.
     @State private var showPopout = ProcessInfo.processInfo.arguments.contains("-popout")
     @State private var isImporting = false
+    @State private var showGrid = false
     @State private var pdfHost = PDFViewHost()
 
     // Auto-hide chrome. The tab strip and controls fade out after a few idle
@@ -72,8 +73,11 @@ struct LessonStageView: View {
     var body: some View {
         VStack(spacing: 0) {
             if showChrome {
-                TabStrip(openDocuments: { isImporting = true })
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                TabStrip(
+                    openGrid: { showGrid = true },
+                    openDocuments: { isImporting = true }
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
                 Divider()
             }
             readingArea
@@ -95,6 +99,10 @@ struct LessonStageView: View {
             }
         }
         .sheet(isPresented: $showPopout) { PopoutSheet() }
+        .sheet(isPresented: $showGrid) {
+            LessonGridView(openDocuments: { isImporting = true })
+                .environment(session)
+        }
         .onAppear {
             attachDiagnostics()
             pdfHost.pencilToggle.onTap = { session.toggleEraser() }

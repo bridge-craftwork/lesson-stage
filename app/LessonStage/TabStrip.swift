@@ -5,12 +5,22 @@ import UniformTypeIdentifiers
 /// for a class — so tabs stay readable rather than collapsing to slivers.
 struct TabStrip: View {
     @Environment(LessonSession.self) private var session
+    let openGrid: () -> Void
     let openDocuments: () -> Void
 
     @State private var draggingID: LessonTab.ID?
 
     var body: some View {
         HStack(spacing: 0) {
+            Button(action: openGrid) {
+                Image(systemName: "square.grid.2x2")
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("All lessons")
+            .accessibilityIdentifier("openGrid")
+
+            Divider()
+
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 1) {
                     ForEach(session.tabs) { tab in
@@ -143,7 +153,7 @@ private struct TabButton: View {
 }
 
 #Preview {
-    TabStrip(openDocuments: {})
+    TabStrip(openGrid: {}, openDocuments: {})
         .environment(LessonSession.preview)
         .preferredColorScheme(.dark)
 }
