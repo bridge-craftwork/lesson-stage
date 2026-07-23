@@ -151,7 +151,7 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
             recognizer.allowedTouchTypes = allowed
         }
 
-        diagnostics?.record(
+        diagnostics?.recordCoalesced(
             "routing — marking \(isDrawingEnabled ? "on" : "off"), \(recognizers.count) PDF recognizers restricted"
         )
     }
@@ -182,17 +182,25 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
             node = current.superview
         }
 
-        let message = """
-            canvas placement: policy=\(canvas.drawingPolicy.rawValue) \
-            enabled=\(canvas.isUserInteractionEnabled) \
-            frame=\(canvas.frame) \
-            hidden=\(canvas.isHidden) alpha=\(canvas.alpha) \
-            interactionBlockedBy=\(blocked ?? "none") \
-            ancestry=\(ancestry.joined(separator: " < "))
-            """
+        // The full placement dump only when something is wrong. Emitting it
+        // per page buries the touch and stroke lines — which are what you are
+        // usually watching — under repetitions of identical, healthy state.
+        let message: String
+        if let blocked {
+            message = """
+                canvas placement: page \(canvas.tag) BLOCKED BY \(blocked) \
+                policy=\(canvas.drawingPolicy.rawValue) \
+                enabled=\(canvas.isUserInteractionEnabled) \
+                frame=\(canvas.frame) \
+                hidden=\(canvas.isHidden) alpha=\(canvas.alpha) \
+                ancestry=\(ancestry.joined(separator: " < "))
+                """
+        } else {
+            message = "canvas attached — page \(canvas.tag), interaction ok, policy=\(canvas.drawingPolicy.rawValue)"
+        }
 
         Self.logger.debug("\(message, privacy: .public)")
-        diagnostics?.record(message)
+        diagnostics?.recordCoalesced(message)
     }
     #endif
 
@@ -217,6 +225,14 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
         canvas.isUserInteractionEnabled = isDrawingEnabled
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
+
+        // PencilKit lightens ink under a dark interface style so it stays
+        // visible on a dark canvas — which is why a black pen drew grey: the
+        // app forces dark chrome and the canvas inherited it. But this canvas
+        // is over a white PDF page, not over the chrome, so it must be told
+        // the surface it is actually marking. Same lesson as the popout's
+        // vendored components: match the surface, don't fight the framework.
+        canvas.overrideUserInterfaceStyle = .light
         // The canvas must not scroll: PDFKit owns scrolling, and a canvas that
         // scrolls independently detaches the ink from the page under it.
         canvas.isScrollEnabled = false
@@ -230,6 +246,8 @@ extension PageCanvasProvider: PKCanvasViewDelegate {
         let index = canvasView.tag
         drawings?.update(canvasView.drawing, forPage: index)
         if !canvasView.drawing.strokes.isEmpty { lastEditedPage = index }
-        diagnostics?.record("drawing changed — page \(index), \(canvasView.drawing.strokes.count) stroke(s)")
+        if !canvasView.drawing.strokes.isEmpty {
+            diagnostics?.record("drawing changed — page \(index), \(canvasView.drawing.strokes.count) stroke(s)")
+        }
     }
 }

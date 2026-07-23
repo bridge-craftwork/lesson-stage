@@ -68,7 +68,7 @@ enum PenColor: String, Equatable, Hashable, CaseIterable {
 
     var uiColor: UIColor {
         switch self {
-        case .black: UIColor(white: 0.1, alpha: 1)
+        case .black: .black
         case .red: UIColor(red: 0.80, green: 0.13, blue: 0.13, alpha: 1)
         case .blue: UIColor(red: 0.11, green: 0.36, blue: 0.78, alpha: 1)
         case .yellow: UIColor(red: 0.98, green: 0.85, blue: 0.20, alpha: 1)
