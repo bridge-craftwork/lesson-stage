@@ -94,15 +94,19 @@ final class DrawingStoreTests: XCTestCase {
         return PKDrawing(strokes: [PKStroke(ink: ink, path: path)])
     }
 
+    /// Save just page drawings, the common case in these tests.
+    private func save(drawings: [Int: PKDrawing]) {
+        store.save(DrawingStore.Contents(drawings: drawings), hash: documentHash)
+    }
+
     func testRoundTripPreservesPerPageDrawings() throws {
-        let drawing = strokedDrawing()
-        store.save([2: drawing], hash: documentHash)
+        save(drawings: [2: strokedDrawing()])
 
         let loaded = store.load(hash: documentHash)
 
-        XCTAssertEqual(loaded.count, 1)
-        XCTAssertEqual(loaded[2]?.strokes.count, 1)
-        XCTAssertNil(loaded[0], "Pages never drawn on stay absent")
+        XCTAssertEqual(loaded.drawings.count, 1)
+        XCTAssertEqual(loaded.drawings[2]?.strokes.count, 1)
+        XCTAssertNil(loaded.drawings[0], "Pages never drawn on stay absent")
     }
 
     func testLoadingADocumentWithNoSidecarIsEmpty() {
@@ -110,7 +114,7 @@ final class DrawingStoreTests: XCTestCase {
     }
 
     func testEmptyDrawingsAreNotStored() {
-        store.save([0: PKDrawing(), 1: PKDrawing()], hash: documentHash)
+        save(drawings: [0: PKDrawing(), 1: PKDrawing()])
 
         XCTAssertTrue(store.load(hash: documentHash).isEmpty)
         XCTAssertFalse(
@@ -120,10 +124,10 @@ final class DrawingStoreTests: XCTestCase {
     }
 
     func testSavingEmptyOverAnExistingSidecarRemovesIt() {
-        store.save([0: strokedDrawing()], hash: documentHash)
+        save(drawings: [0: strokedDrawing()])
         XCTAssertTrue(FileManager.default.fileExists(atPath: store.url(forHash: documentHash).path))
 
-        store.save([0: PKDrawing()], hash: documentHash)
+        save(drawings: [0: PKDrawing()])
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: store.url(forHash: documentHash).path))
     }
@@ -149,9 +153,60 @@ final class DrawingStoreTests: XCTestCase {
         let other = UUID().uuidString
         defer { try? FileManager.default.removeItem(at: store.url(forHash: other)) }
 
-        store.save([0: strokedDrawing()], hash: documentHash)
+        save(drawings: [0: strokedDrawing()])
 
         XCTAssertTrue(store.load(hash: other).isEmpty)
+    }
+
+    // MARK: - Highlights
+
+    private func aHighlight(_ color: PenColor = .yellow) -> TextHighlight {
+        TextHighlight(rects: [CGRect(x: 10, y: 20, width: 100, height: 14)], color: color)
+    }
+
+    func testHighlightsRoundTripAlongsideDrawings() {
+        store.save(
+            DrawingStore.Contents(drawings: [1: strokedDrawing()], highlights: [1: [aHighlight()]]),
+            hash: documentHash
+        )
+
+        let loaded = store.load(hash: documentHash)
+
+        XCTAssertEqual(loaded.drawings[1]?.strokes.count, 1)
+        XCTAssertEqual(loaded.highlights[1]?.count, 1)
+        XCTAssertEqual(loaded.highlights[1]?.first?.color, .yellow)
+    }
+
+    func testAPageWithOnlyHighlightsIsStored() {
+        store.save(DrawingStore.Contents(highlights: [3: [aHighlight(.blue)]]), hash: documentHash)
+
+        let loaded = store.load(hash: documentHash)
+
+        XCTAssertTrue(loaded.drawings.isEmpty)
+        XCTAssertEqual(loaded.highlights[3]?.first?.color, .blue)
+    }
+
+    func testEmptyHighlightArraysAreNotStored() {
+        store.save(DrawingStore.Contents(highlights: [0: []]), hash: documentHash)
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: store.url(forHash: documentHash).path),
+            "A page whose highlights were all erased should leave no sidecar"
+        )
+    }
+
+    func testAPreHighlightSidecarStillLoads() throws {
+        // A sidecar written before highlights existed has no `highlights` key.
+        let payload: [String: Any] = [
+            "version": DrawingStore.currentVersion,
+            "pages": [:] as [String: Any],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload)
+        try data.write(to: store.url(forHash: documentHash), options: .atomic)
+
+        let loaded = store.load(hash: documentHash)
+
+        XCTAssertTrue(loaded.highlights.isEmpty, "A missing highlights key must decode, not throw")
     }
 }
 
@@ -237,8 +292,67 @@ final class DrawingSetTests: XCTestCase {
     }
 
     func testLoadsExistingAnnotationsOnInit() {
-        store.save([4: strokedDrawing()], hash: documentHash)
+        store.save(DrawingStore.Contents(drawings: [4: strokedDrawing()]), hash: documentHash)
 
         XCTAssertEqual(makeSet().drawing(forPage: 4).strokes.count, 1)
+    }
+
+    // MARK: - Highlights
+
+    private func aHighlight(_ color: PenColor = .yellow) -> TextHighlight {
+        TextHighlight(rects: [CGRect(x: 10, y: 20, width: 100, height: 14)], color: color)
+    }
+
+    func testAddingAHighlightIsReadBack() {
+        let set = makeSet()
+        set.addHighlight(aHighlight(), toPage: 2)
+
+        XCTAssertEqual(set.highlights(forPage: 2).count, 1)
+        XCTAssertTrue(set.hasAnnotations)
+    }
+
+    func testHighlightSurvivesSaveAndReopen() {
+        let set = makeSet(saveDelay: .seconds(60))
+        set.addHighlight(aHighlight(.blue), toPage: 1)
+        set.saveNow()
+
+        XCTAssertEqual(makeSet().highlights(forPage: 1).first?.color, .blue)
+    }
+
+    func testErasingAHighlightByPoint() {
+        let set = makeSet()
+        set.addHighlight(aHighlight(), toPage: 0)
+
+        let inside = CGPoint(x: 20, y: 27)
+        XCTAssertTrue(set.removeHighlight(atPage: 0, containing: inside))
+        XCTAssertTrue(set.highlights(forPage: 0).isEmpty)
+    }
+
+    func testErasingMissesWhenPointIsOutsideEveryHighlight() {
+        let set = makeSet()
+        set.addHighlight(aHighlight(), toPage: 0)
+
+        XCTAssertFalse(set.removeHighlight(atPage: 0, containing: CGPoint(x: 500, y: 500)))
+        XCTAssertEqual(set.highlights(forPage: 0).count, 1, "A miss removes nothing")
+    }
+
+    func testAnnotatedPageCountUnionsInkAndHighlights() {
+        let set = makeSet()
+        set.update(strokedDrawing(), forPage: 0)
+        set.addHighlight(aHighlight(), toPage: 0)   // same page — counted once
+        set.addHighlight(aHighlight(), toPage: 1)   // highlight-only page
+
+        XCTAssertEqual(set.annotatedPageCount, 2)
+    }
+
+    func testClearingAPageRemovesHighlightsToo() {
+        let set = makeSet()
+        set.update(strokedDrawing(), forPage: 0)
+        set.addHighlight(aHighlight(), toPage: 0)
+
+        set.clear(page: 0)
+
+        XCTAssertTrue(set.highlights(forPage: 0).isEmpty)
+        XCTAssertTrue(set.drawing(forPage: 0).strokes.isEmpty)
     }
 }

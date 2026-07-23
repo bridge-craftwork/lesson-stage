@@ -98,10 +98,14 @@ struct PDFDocumentView: UIViewRepresentable {
         //   - `go(to:)`, which silently does nothing before layout.
         let coordinator = context.coordinator
         let pageIndex = tab.pageIndex
+        let canvases = host.canvases
         Task { @MainActor in
             view.layoutIfNeeded()
             view.autoScales = true
             coordinator.restore(pageIndex: pageIndex, in: view)
+            // Draw the saved highlights back onto the pages. Deferred with the
+            // rest until layout, since it addresses pages by index.
+            canvases.applyStoredHighlights()
         }
     }
 

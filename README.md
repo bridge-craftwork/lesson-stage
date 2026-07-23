@@ -11,11 +11,16 @@ play it out, trick by trick.
 
 ## Status
 
-**Phase 2a — Apple Pencil draw mode.** Marking with a Pencil: pen in three
-colours, highlighter, stroke eraser, and undo. Annotations are stored in a
+**Phase 2 — Apple Pencil annotation.** Marking with a Pencil: pen in three
+colours, highlighter, stroke eraser, and undo. In copy mode (highlighter), a
+stroke that starts on text becomes a text highlight and one that starts on
+whitespace becomes ink — the GoodReader gesture. Annotations are stored in a
 sidecar keyed by the PDF's content hash — the original file is never modified,
 and marks survive a rename or re-download. A finger still scrolls and zooms
 while the Pencil draws.
+
+Copy-mode *feel* (how much a swipe selects, two-column pages) is still being
+tuned on a device; the mechanism and routing are complete.
 
 **Phase 1 — PDF presentation shell.** Tabbed PDF viewing with continuous
 scroll, pinch zoom, a page thumbnail sidebar, drag-to-reorder tabs, a

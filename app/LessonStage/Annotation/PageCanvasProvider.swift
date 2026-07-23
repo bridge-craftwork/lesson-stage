@@ -91,6 +91,9 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
 
     func pdfView(_ pdfView: PDFView, willDisplayOverlayView overlayView: UIView, for page: PDFPage) {
         self.pdfView = pdfView
+        // Set here, not in `makeCanvas`: `overlayViewFor` runs before this, so
+        // the pdfView reference is not yet available when the canvas is built.
+        (overlayView as? PageCanvasView)?.hostPDFView = pdfView
         enableInteraction(from: overlayView, upTo: pdfView)
         applyTouchRouting()
 
@@ -218,6 +221,7 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
     private func makeCanvas(forPage index: Int) -> PageCanvasView {
         let canvas = PageCanvasView()
         canvas.diagnostics = diagnostics
+        canvas.router = self
         canvas.tag = index
         canvas.delegate = self
         canvas.tool = tool.pkTool
@@ -238,6 +242,115 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
         canvas.isScrollEnabled = false
         canvas.accessibilityIdentifier = "pageCanvas"
         return canvas
+    }
+}
+
+extension PageCanvasProvider: CopyModeRouter {
+    var isCopyModeActive: Bool {
+        if case .highlighter = tool { return true }
+        return false
+    }
+
+    var isEraserActive: Bool { tool == .eraser }
+
+    func eraseHighlight(at viewPoint: CGPoint) -> Bool {
+        guard let pdfView, let page = pdfView.page(for: viewPoint, nearest: true),
+              let index = pdfView.document?.index(for: page) else { return false }
+        let pagePoint = pdfView.convert(viewPoint, to: page)
+
+        guard drawings?.removeHighlight(atPage: index, containing: pagePoint) == true else { return false }
+
+        // Rebuild the page's highlight annotations from the surviving model,
+        // rather than hunting the one annotation to delete: the model is the
+        // source of truth, and a highlight is several annotations (one per
+        // line) that must go together.
+        removeOwnedHighlightAnnotations(from: page)
+        for highlight in drawings?.highlights(forPage: index) ?? [] {
+            for annotation in HighlightFactory.annotations(for: highlight) {
+                page.addAnnotation(annotation)
+            }
+        }
+        lastEditedPage = index
+        return true
+    }
+
+    /// Remove only the highlight annotations this app added, leaving any the
+    /// lesson shipped with — Contract 5's `lesson-block:` links included.
+    private func removeOwnedHighlightAnnotations(from page: PDFPage) {
+        for annotation in page.annotations where annotation.userName == HighlightFactory.ownerTag {
+            page.removeAnnotation(annotation)
+        }
+    }
+
+    /// Whether a character sits under a point given in PDF-view space.
+    ///
+    /// Conversion goes through `PDFView`, which owns the mapping from its own
+    /// coordinates to a page's — UIKit is top-left, PDF space is bottom-left,
+    /// and letting PDFKit bridge the two is what keeps the hit-test landing
+    /// where the finger actually is.
+    func hasCharacter(at viewPoint: CGPoint) -> Bool {
+        guard let pdfView, let page = pdfView.page(for: viewPoint, nearest: true) else { return false }
+        let pagePoint = pdfView.convert(viewPoint, to: page)
+
+        // `characterIndex(at:)` does NOT return -1 for a point off every glyph
+        // — it returns the *nearest* character, so it reports "on text"
+        // everywhere, including the margins. That would route every copy-mode
+        // touch to highlighting and make inking impossible. The real test is
+        // whether that character's bounds actually contain the point.
+        let index = page.characterIndex(at: pagePoint)
+        guard index >= 0 else { return false }
+
+        let bounds = page.characterBounds(at: index)
+        // A small inset of slack, so a touch just above or below a glyph still
+        // counts as "on the line" — matching the feel of dragging a highlight
+        // along text rather than needing to be dead-centre on the glyph.
+        return bounds.insetBy(dx: -2, dy: -2).contains(pagePoint)
+    }
+
+    func selection(from: CGPoint, to: CGPoint) -> PDFSelection? {
+        guard let pdfView,
+              let fromPage = pdfView.page(for: from, nearest: true),
+              let toPage = pdfView.page(for: to, nearest: true) else { return nil }
+        return pdfView.document?.selection(
+            from: fromPage, at: pdfView.convert(from, to: fromPage),
+            to: toPage, at: pdfView.convert(to, to: toPage)
+        )
+    }
+
+    func showLiveSelection(_ selection: PDFSelection?) {
+        // PDFView draws its own current selection; reuse it for feedback rather
+        // than drawing a second overlay that could disagree with it.
+        pdfView?.setCurrentSelection(selection, animate: false)
+    }
+
+    func clearLiveSelection() {
+        pdfView?.setCurrentSelection(nil, animate: false)
+    }
+
+    func commitHighlight(_ selection: PDFSelection, onPage index: Int) {
+        guard let page = pdfView?.document?.page(at: index),
+              case .highlighter(let color) = tool,
+              let highlight = HighlightFactory.make(from: selection, on: page, color: color)
+        else { return }
+
+        drawings?.addHighlight(highlight, toPage: index)
+        for annotation in HighlightFactory.annotations(for: highlight) {
+            page.addAnnotation(annotation)
+        }
+        lastEditedPage = index
+    }
+
+    /// Restore a document's saved highlights as annotations when it loads.
+    func applyStoredHighlights() {
+        guard let document = pdfView?.document, let drawings else { return }
+        for (index, highlights) in drawings.highlights {
+            guard let page = document.page(at: index) else { continue }
+            for highlight in highlights {
+                for annotation in HighlightFactory.annotations(for: highlight) {
+                    page.addAnnotation(annotation)
+                }
+            }
+        }
     }
 }
 

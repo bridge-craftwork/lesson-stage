@@ -45,7 +45,7 @@ final class DrawingUITests: LessonStageUITestCase {
     /// needs hardware.
     private func skipUnlessStrokesArePossible() throws {
         #if targetEnvironment(simulator)
-        throw XCTSkip("PencilKit ignores synthesized touches in the simulator; run on a device.")
+        throw XCTSkip("Needs a real touch device — synthesized touches don't reach this path in the simulator; run on a device.")
         #endif
     }
 
@@ -99,6 +99,115 @@ final class DrawingUITests: LessonStageUITestCase {
 
         debugTab.tap()
         XCTAssertTrue(waitForDisappearance(of: app.descendants(matching: .any)["diagnosticsView"].firstMatch))
+    }
+
+    /// Copy mode's highlight path is our own touch handling plus PDFKit text
+    /// selection — it does not go through PencilKit's stroke builder, so unlike
+    /// ink it may be reachable by a synthesized drag. If the simulator turns
+    /// out to reject it too, this asserts nothing false; it just needs the same
+    /// device skip. Kept separate from the ink tests for exactly that reason.
+    func testHighlightingTextMarksThePage() {
+        let app = launchDrawing()
+        XCTAssertTrue(app.buttons["tool-Yellow highlighter"].waitForExistence(timeout: 10))
+        app.buttons["tool-Yellow highlighter"].tap()
+
+        let marks = annotatedPages(in: app)
+        XCTAssertEqual(marks.label, "0")
+
+        // Drag across the lesson title, which sits in the upper-left of page 1.
+        let page = app.otherElements["pdfView"]
+        let start = page.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.16))
+        let end = page.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.16))
+        start.press(forDuration: 0.2, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
+
+        XCTAssertTrue(expect(marks, toRead: "1"), "Dragging over text should leave a highlight")
+    }
+
+    /// The other half of the routing decision, read from the diagnostics panel
+    /// rather than inferred from a mark count. A drag low on the page — well
+    /// below any text in the fixture — must be routed to ink, not highlight.
+    /// Reading the recorded decision makes this robust to where exactly the
+    /// glyphs fell, which a mark count is not.
+    func testDraggingBlankSpaceRoutesToInk() {
+        let app = launchDrawing()
+        app.buttons["tool-Yellow highlighter"].tap()
+        XCTAssertTrue(annotatedPages(in: app).waitForExistence(timeout: 10))
+
+        let page = app.otherElements["pdfView"]
+        page.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9))
+            .press(
+                forDuration: 0.2,
+                thenDragTo: page.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.9)),
+                withVelocity: .slow,
+                thenHoldForDuration: 0.2
+            )
+
+        app.descendants(matching: .any)["tab-diagnostics"].firstMatch.tap()
+        XCTAssertTrue(
+            app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'whitespace, inking'"))
+                .firstMatch.waitForExistence(timeout: 5),
+            "A drag starting on blank space should be routed to ink, not highlighting"
+        )
+    }
+
+    /// Erasing end-to-end depends on tapping exactly where PDFKit rendered the
+    /// selection, which sits where its own geometry puts it — not precisely
+    /// under the finger. That offset is part of the copy-mode feel still being
+    /// tuned on a device, and makes a coordinate-precise tap unreliable in CI.
+    /// The erase *logic* is covered by `DrawingSetTests.testErasingAHighlight`
+    /// (remove-by-point); this verifies the touch wiring, on hardware.
+    func testErasingAHighlight() throws {
+        try skipUnlessStrokesArePossible()
+        let app = launchDrawing()
+        app.buttons["tool-Yellow highlighter"].tap()
+        let marks = annotatedPages(in: app)
+        XCTAssertTrue(marks.waitForExistence(timeout: 10))
+
+        // Highlight the title with a tight drag, then erase by tapping the same
+        // spot. Using one point for both sides means the test does not depend
+        // on where PDFKit's selection geometry lands — only that the eraser
+        // reaches whatever was highlighted under the finger.
+        let page = app.otherElements["pdfView"]
+        let onTitle = CGVector(dx: 0.2, dy: 0.155)
+        page.coordinate(withNormalizedOffset: onTitle)
+            .press(
+                forDuration: 0.2,
+                thenDragTo: page.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.155)),
+                withVelocity: .slow,
+                thenHoldForDuration: 0.2
+            )
+        XCTAssertTrue(expect(marks, toRead: "1"), "Precondition: a highlight to erase")
+
+        app.buttons["tool-Eraser"].tap()
+        page.coordinate(withNormalizedOffset: onTitle).tap()
+
+        XCTAssertTrue(expect(marks, toRead: "0"), "Tapping a highlight with the eraser should remove it")
+    }
+
+    func testHighlightSurvivesRelaunch() {
+        let app = launchDrawing()
+        app.buttons["tool-Yellow highlighter"].tap()
+        let marks = annotatedPages(in: app)
+        XCTAssertTrue(marks.waitForExistence(timeout: 10))
+
+        let page = app.otherElements["pdfView"]
+        page.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.16))
+            .press(
+                forDuration: 0.2,
+                thenDragTo: page.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.16)),
+                withVelocity: .slow,
+                thenHoldForDuration: 0.2
+            )
+        XCTAssertTrue(expect(marks, toRead: "1"))
+
+        XCUIDevice.shared.press(.home)
+        Thread.sleep(forTimeInterval: 2)
+        app.terminate()
+
+        let reopened = launchDrawing()
+        let restored = annotatedPages(in: reopened)
+        XCTAssertTrue(restored.waitForExistence(timeout: 10))
+        XCTAssertTrue(expect(restored, toRead: "1"), "The highlight should be restored from the sidecar")
     }
 
     func testPaletteIsHiddenInPresentationMode() {

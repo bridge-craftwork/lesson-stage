@@ -130,12 +130,41 @@ from synthesized touches, confirmed by instrumenting a running build. Those
 three tests are written and skip on the simulator; they run on a paired iPad,
 where `-fingerDrawing` lets a finger draw.
 
-**2b — Copy mode (the GoodReader gesture).** Route each pencil stroke at
-touch-down: hit-test the point against the page's text layout — if it lands on
-a character, run selection (`PDFPage.selection(from:to:)`) and emit a
-`.highlight` markup annotation from the selection's line bounds; if whitespace,
-route to the PencilKit canvas. Color picker for highlights. Iterate on feel:
-rotated pages, two-column lessons, selection handles.
+**2b — Copy mode (the GoodReader gesture). Mechanism built; feel iteration
+pending on device.** Each stroke is routed at touch-down in
+`PageCanvasView.touchesBegan`: hit-test the point against the page's text
+layout — on a character, run a PDFKit selection and commit a `.highlight`
+annotation from the selection's per-line bounds; on whitespace, fall through
+to the PencilKit canvas as ink. Highlights persist in the same content-hash
+sidecar as the ink (never touching the source PDF), and the eraser removes a
+highlight under a tap as well as ink.
+
+Two findings, both from running it on the simulator with the diagnostics tab:
+
+- **`PDFPage.characterIndex(at:)` returns the *nearest* glyph, not −1 off
+  text** — so it reports "on text" everywhere, margins included, which would
+  make inking in copy mode impossible. The real test is whether that
+  character's `characterBounds(at:)` actually contains the point. That is the
+  whole routing decision and it was silently wrong until the on-screen
+  diagnostics showed a margin drag reporting "on text".
+- **Points must be converted through `PDFView`, not assumed to be page space.**
+  The canvas overlay is UIKit (top-left); a PDF page is bottom-left. Routing
+  the touch through `pdfView.convert(_:to: page)` is what keeps the hit-test
+  where the finger is.
+
+**Still to iterate (the plan always had this as the open-ended half):**
+- **Selection geometry.** `document.selection(from:at:to:at:)` selects the
+  text *flow* between two points, so a drag along one line can catch the next.
+  GoodReader feels like it highlights what the swipe passed over. Tuning this
+  — and rotated pages, two-column lessons, selection ends — is device-and-
+  Pencil work.
+- A colour picker for highlights (the model already carries a colour).
+
+**Verification.** The routing decision, the highlight lifecycle (commit →
+render → persist → reload), and remove-by-point are covered — 49 unit tests
+and simulator-reachable UI tests, since the highlight path is our own touch
+handling plus PDFKit selection, *not* PencilKit's stroke builder. Only the
+touch-precise erase-tap and ink strokes need a device (4 skipped tests).
 
 **Exit:** GoodReader-parity for the annotation workflow actually used in
 class. GoodReader retired for ordinary lessons.
