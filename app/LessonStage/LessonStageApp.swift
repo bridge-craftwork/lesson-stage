@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct LessonStageApp: App {
     @State private var session = LessonSession()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -20,6 +21,11 @@ struct LessonStageApp: App {
                     #endif
                     session.restore()
                     openLaunchArgumentFiles()
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    // Suspension can follow immediately; do not let the save
+                    // debounce be holding the last strokes when it does.
+                    if phase != .active { session.flushDrawings() }
                 }
         }
     }

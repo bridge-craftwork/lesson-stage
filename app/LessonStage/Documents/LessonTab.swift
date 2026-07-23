@@ -8,6 +8,7 @@ import PDFKit
 /// open. Files arrive from the document picker outside the app's sandbox, so
 /// access must be claimed before reading and released on close — leaking a
 /// claim eventually exhausts a per-process limit.
+@MainActor
 @Observable
 final class LessonTab: Identifiable {
     let id: UUID
@@ -26,7 +27,14 @@ final class LessonTab: Identifiable {
     /// 0-based page the tab was last showing. Restored on reopen.
     var pageIndex: Int
 
-    private var isAccessing = false
+    /// Annotations for this document, loaded alongside it. `nil` until the
+    /// document has been read, since the sidecar is keyed by content hash.
+    private(set) var drawings: DrawingSet?
+
+    /// `nonisolated` so `deinit` — which cannot hop to the main actor — can
+    /// still release a leaked claim. Only ever mutated on the main actor, by
+    /// `load` and `releaseAccess`.
+    private nonisolated(unsafe) var isAccessing = false
 
     init(id: UUID = UUID(), url: URL, title: String? = nil, bookmark: Data? = nil, pageIndex: Int = 0) {
         self.id = id
@@ -60,11 +68,19 @@ final class LessonTab: Identifiable {
         self.loadFailure = nil
         // A restored page index can be stale if the file changed underneath us.
         self.pageIndex = min(pageIndex, max(0, document.pageCount - 1))
+
+        if let hash = ContentHash.sha256(of: url) {
+            drawings = DrawingSet(contentHash: hash)
+        }
         return true
     }
 
     /// Release the file. Called when the tab closes.
     func close() {
+        // Flush before releasing: waiting out the save debounce would lose
+        // whatever was drawn in the last couple of seconds.
+        drawings?.saveNow()
+        drawings = nil
         document = nil
         releaseAccess()
     }

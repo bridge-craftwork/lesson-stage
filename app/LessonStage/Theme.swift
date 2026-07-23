@@ -10,6 +10,8 @@ extension Color {
     static let tabStripSurface = Color(white: 0.18)
 
     static let selectedTab = Color.primary.opacity(0.12)
+
+    static let selectedTool = Color.accentColor.opacity(0.28)
 }
 
 #if DEBUG

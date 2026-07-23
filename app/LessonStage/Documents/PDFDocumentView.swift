@@ -16,6 +16,10 @@ import os
 final class PDFViewHost {
     let pdfView: PDFView
 
+    /// Supplies the per-page PencilKit canvases. Held here because it must
+    /// outlive any single `updateUIView`, and because the toolbar drives it.
+    let canvases = PageCanvasProvider()
+
     init() {
         let view = PDFView()
 
@@ -32,6 +36,19 @@ final class PDFViewHost {
         view.accessibilityIdentifier = "pdfView"
 
         self.pdfView = view
+        // `pageOverlayViewProvider` is a weak property, so the provider must be
+        // owned here — a locally-created one is released before PDFKit asks
+        // it for anything.
+        view.pageOverlayViewProvider = canvases
+
+        #if DEBUG
+        // The simulator has no Pencil, so `.pencilOnly` would make every
+        // drawing path untestable. This is the only way a stroke gets
+        // exercised outside a physical iPad.
+        if ProcessInfo.processInfo.arguments.contains("-fingerDrawing") {
+            canvases.drawingPolicy = .anyInput
+        }
+        #endif
     }
 }
 
@@ -60,6 +77,11 @@ struct PDFDocumentView: UIViewRepresentable {
             return
         }
         context.coordinator.currentTabID = tab.id
+
+        // Point the canvases at this document's annotations before the pages
+        // lay out, or the first overlays attach to the previous tab's set.
+        host.canvases.reset()
+        host.canvases.drawings = tab.drawings
 
         // Recording is suppressed from here until the restore has settled.
         // Setting a document makes PDFKit lay out from page 1 and report that

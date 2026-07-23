@@ -33,6 +33,13 @@ final class LessonSession {
 
     var showsThumbnails = false
 
+    /// Whether the Pencil marks the page or scrolls it. Not persisted: which
+    /// mode you want depends on what you are doing right now, and inheriting
+    /// last week's answer is worse than starting from the same place daily.
+    var isDrawingEnabled = true
+
+    var tool: DrawingTool = .pen(.black)
+
     private let store: SessionStore
 
     init(store: SessionStore = SessionStore()) {
@@ -140,6 +147,15 @@ final class LessonSession {
 
         // Write back if anything was dropped or any bookmark was refreshed.
         if restored.count != persisted.tabs.count { persist() }
+    }
+
+    /// Write every open document's annotations immediately.
+    ///
+    /// Called when the app leaves the foreground: iPadOS can suspend or
+    /// terminate us at any point after that, and the save debounce would
+    /// otherwise be holding the last few strokes in memory.
+    func flushDrawings() {
+        for tab in tabs { tab.drawings?.saveNow() }
     }
 
     #if DEBUG

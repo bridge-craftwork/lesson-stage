@@ -11,12 +11,20 @@ play it out, trick by trick.
 
 ## Status
 
+**Phase 2a — Apple Pencil draw mode.** Marking with a Pencil: pen in three
+colours, highlighter, stroke eraser, and undo. Annotations are stored in a
+sidecar keyed by the PDF's content hash — the original file is never modified,
+and marks survive a rename or re-download. A finger still scrolls and zooms
+while the Pencil draws.
+
 **Phase 1 — PDF presentation shell.** Tabbed PDF viewing with continuous
 scroll, pinch zoom, a page thumbnail sidebar, drag-to-reorder tabs, a
 presentation mode that strips all chrome, and session restore that reopens
 last session's tabs on the page each was left on.
 
 Touch-driven interactions are covered by the `LessonStageUITests` target.
+Stroke creation is the one thing that cannot be: PencilKit ignores synthesized
+touches in the simulator, so those tests skip there and run on a device.
 
 Also done, early and out of order: a **working bridge popout spike**. Real
 unmodified Bridge-Classroom components (`HandDisplay`, `TrickArea`) run in a
@@ -35,6 +43,8 @@ Neither the document picker nor a tap can be scripted, so debug builds accept:
 | `-thumbnails` | Start with the page sidebar showing |
 | `-present` | Start in presentation mode |
 | `-popout` | Open the bridge popout immediately |
+| `-reset` | Discard the saved session before restoring |
+| `-fingerDrawing` | Let a finger draw, not just a Pencil (tests, and the simulator) |
 
 See [docs/PLAN.md](docs/PLAN.md) for the full phase plan. Each phase is
 ordered to end with something usable in a Tuesday class.

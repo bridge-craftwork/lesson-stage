@@ -103,10 +103,32 @@ makes a poor assertion target — the page count is the sturdy one.
 
 Two sub-phases, shippable independently:
 
-**2a — Draw mode.** `PKCanvasView` per page via
+**2a — Draw mode. Built.** `PKCanvasView` per page via
 `PDFPageOverlayViewProvider`; per-page `PKDrawing` storage; sidecar
-persistence (content-hash key); undo; eraser; `PKToolPicker` or a minimal
-custom palette.
+persistence keyed by content hash; undo; eraser; a minimal custom palette.
+
+- **A minimal palette, not `PKToolPicker`.** The picker attaches to a single
+  first responder, and this app has one canvas *per page* — a dozen live at
+  once in continuous scroll. Driving the picker's first-responder dance across
+  them costs more than the palette it replaces, and 2b needs custom stroke
+  routing anyway.
+- **`.pencilOnly` drawing policy**, so a finger still scrolls and zooms while
+  the Pencil marks — no mode switching. A toggle turns marking off entirely
+  for when the Pencil should scroll instead.
+- **Two non-obvious requirements**, both found by running it: the PDF's pan
+  gesture must be made to `require(toFail:)` the canvas's drawing gesture in
+  `willDisplayOverlayView`, or strokes never reach the canvas; and
+  `PDFView.pageOverlayViewProvider` is a **weak** property, so the provider
+  has to be owned elsewhere.
+- Saves are debounced (a file write inside the Pencil's input path is the one
+  place latency is unforgivable) and flushed on close and on backgrounding.
+
+**Verification split:** everything except stroke creation is covered — the
+sidecar, hashing, per-page storage, versioning, and the palette. Strokes
+themselves cannot be tested in the simulator: PencilKit does not build strokes
+from synthesized touches, confirmed by instrumenting a running build. Those
+three tests are written and skip on the simulator; they run on a paired iPad,
+where `-fingerDrawing` lets a finger draw.
 
 **2b — Copy mode (the GoodReader gesture).** Route each pencil stroke at
 touch-down: hit-test the point against the page's text layout — if it lands on

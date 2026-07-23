@@ -61,7 +61,10 @@ struct LessonStageView: View {
                             .background(.thinMaterial, in: .rect(cornerRadius: 10))
                             .padding()
                     } else if !session.isPresenting {
-                        ReadingControls(tab: tab)
+                        VStack(spacing: 10) {
+                            DrawingPalette(host: pdfHost, drawings: tab.drawings)
+                            ReadingControls(tab: tab)
+                        }
                     }
                 }
             }
