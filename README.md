@@ -11,14 +11,32 @@ play it out, trick by trick.
 
 ## Status
 
-**Phase 0 — scaffold.** The app launches to an empty tab strip. No PDF
-handling yet.
+**Phase 1 — PDF presentation shell.** Tabbed PDF viewing with continuous
+scroll, pinch zoom, a page thumbnail sidebar, drag-to-reorder tabs, a
+presentation mode that strips all chrome, and session restore that reopens
+last session's tabs on the page each was left on.
+
+Touch-driven interactions (tab switch, close, reorder, pinch) are implemented
+but **not yet verified** — `simctl` cannot tap, so they need a XCUITest target
+or hands on the device.
 
 Also done, early and out of order: a **working bridge popout spike**. Real
 unmodified Bridge-Classroom components (`HandDisplay`, `TrickArea`) run in a
 `WKWebView`, driven by the real `cardplayRules.js`, with a two-way native↔JS
 message bridge. It exists because it settled the project's biggest open
 question — see [ADR-003](docs/adr/ADR-003-popout-runs-vue-directly.md).
+
+### Debug launch arguments
+
+Neither the document picker nor a tap can be scripted, so debug builds accept:
+
+| Argument | Effect |
+|---|---|
+| `-open <path>…` | Open PDFs directly, bypassing the picker |
+| `-page <n>` | Put the active tab on 1-based page `n` |
+| `-thumbnails` | Start with the page sidebar showing |
+| `-present` | Start in presentation mode |
+| `-popout` | Open the bridge popout immediately |
 
 See [docs/PLAN.md](docs/PLAN.md) for the full phase plan. Each phase is
 ordered to end with something usable in a Tuesday class.

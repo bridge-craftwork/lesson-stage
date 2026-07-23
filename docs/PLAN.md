@@ -62,12 +62,26 @@ Ordered so every phase ends with something usable in the Tuesday class.
 
 **Exit:** app launches to an empty tab strip on the iPad.
 
-### Phase 1 — PDF presentation shell (1–2 weeks)
+### Phase 1 — PDF presentation shell — **built**
 
-- Tabbed documents: open from Files, tab strip UI, close/reorder.
-- `PDFView` per tab: continuous scroll, zoom, page thumbnails sidebar.
-- Session restore: reopen last session's tabs and scroll positions on launch.
-- Full-screen presentation polish: hide chrome, dark surround.
+- Tabbed documents: open from Files (`.fileImporter`, multi-select), tab strip
+  with close and drag-to-reorder. Reopening an open file selects its tab
+  rather than duplicating it.
+- One reused `PDFView` across tabs — not one per tab, since eight open lessons
+  is the working set and Phase 6 already plans a performance pass at that size.
+  Continuous vertical scroll, pinch zoom, page thumbnails sidebar.
+- Session restore: tabs and page positions persist to
+  `Application Support/session.json` as security-scoped bookmarks. Files that
+  moved or were deleted are dropped rather than reopened broken; stale
+  bookmarks are re-issued.
+- Presentation mode: hides tab strip, controls, and status bar; page goes
+  edge-to-edge on the dark surround.
+
+**Verified on an iPad Pro 13" simulator:** rendering, thumbnails, page
+restore, presentation mode, and a full quit-and-relaunch session restore.
+**Not yet verified:** anything needing touch — tab switch, close, drag-reorder,
+pinch zoom — because `simctl` cannot tap. That needs a XCUITest target or
+hands on the device.
 
 **Exit:** GoodReader-parity for *viewing*. Usable in class read-only.
 

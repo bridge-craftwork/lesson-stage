@@ -5,18 +5,20 @@ extension Color {
     /// surround washes out the page it frames.
     static let presentationSurround = Color(white: 0.12)
 
+    static let sidebarSurface = Color(white: 0.16)
+
+    static let tabStripSurface = Color(white: 0.18)
+
     static let selectedTab = Color.primary.opacity(0.12)
 }
 
 #if DEBUG
 extension LessonSession {
-    /// A session with a few lessons open, for previews.
-    static var preview: LessonSession {
-        let session = LessonSession()
-        session.open(LessonTab(title: "New Minor Forcing"))
-        session.open(LessonTab(title: "Weak Two Bids"))
-        session.open(LessonTab(title: "Splinter Raises"))
-        return session
-    }
+    /// An empty session for previews. Previews cannot open real documents —
+    /// the picker and the security scope both need a running app — so this
+    /// deliberately has no tabs rather than fake ones that would render as
+    /// broken.
+    @MainActor
+    static var preview: LessonSession { LessonSession() }
 }
 #endif
