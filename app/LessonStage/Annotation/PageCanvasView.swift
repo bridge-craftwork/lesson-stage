@@ -42,6 +42,15 @@ final class PageCanvasView: PKCanvasView {
     /// in progress — even before any text is under it.
     private var selectionStart: CGPoint?
 
+    /// Preview throttle. Coalesced touch-moves arrive in floods — a normal
+    /// drag fires hundreds — and rebuilding the preview annotation on each one
+    /// saturates the main thread, so CoreAnimation never gets a gap to paint
+    /// and nothing shows until the flood ends on release. Rebuilding at most
+    /// once per frame leaves those gaps.
+    private var lastPreviewTime: CFTimeInterval = 0
+    private var pendingPoint: CGPoint?
+    private let previewInterval: CFTimeInterval = 1.0 / 60
+
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         report(touches, phase: "began")
 
@@ -67,7 +76,13 @@ final class PageCanvasView: PKCanvasView {
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if selectionStart != nil {
+        if let start = selectionStart {
+            // The final selection uses the actual end point, unthrottled, so a
+            // fast flick that skipped every preview frame still commits the
+            // full span.
+            if let touch = touches.first {
+                activeSelection = router?.selection(from: start, to: hostPoint(for: touch))
+            }
             commitHighlight()
             return
         }
@@ -119,8 +134,16 @@ final class PageCanvasView: PKCanvasView {
     }
 
     private func extendSelection(to touch: UITouch) {
-        guard let start = selectionStart else { return }
-        activeSelection = router?.selection(from: start, to: hostPoint(for: touch))
+        pendingPoint = hostPoint(for: touch)
+
+        // At most one preview rebuild per frame; intermediate moves just record
+        // the latest point. The end point is always applied in `touchesEnded`.
+        let now = CACurrentMediaTime()
+        guard now - lastPreviewTime >= previewInterval else { return }
+        lastPreviewTime = now
+
+        guard let start = selectionStart, let point = pendingPoint else { return }
+        activeSelection = router?.selection(from: start, to: point)
         router?.showLiveSelection(activeSelection)
     }
 
@@ -137,6 +160,8 @@ final class PageCanvasView: PKCanvasView {
     private func endSelection() {
         activeSelection = nil
         selectionStart = nil
+        pendingPoint = nil
+        lastPreviewTime = 0
         router?.clearLiveSelection()
     }
 
