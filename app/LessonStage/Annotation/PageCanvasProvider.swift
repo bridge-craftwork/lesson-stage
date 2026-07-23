@@ -30,8 +30,13 @@ final class PageCanvasProvider: NSObject {
         didSet {
             guard isDrawingEnabled != oldValue else { return }
             for canvas in liveCanvases.values { canvas.isUserInteractionEnabled = isDrawingEnabled }
+            applyTouchRouting()
         }
     }
+
+    /// The PDF view whose scrolling has to yield to the Pencil. Weak: PDFKit
+    /// owns it, and this provider outlives any single page.
+    private weak var pdfView: PDFView?
 
     /// `.pencilOnly` is the default so a finger still scrolls and zooms while
     /// the Pencil draws — no mode switching, which is the behaviour being
@@ -82,26 +87,47 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
     }
 
     func pdfView(_ pdfView: PDFView, willDisplayOverlayView overlayView: UIView, for page: PDFPage) {
-        guard let canvas = overlayView as? PKCanvasView,
-              let scrollView = Self.scrollView(in: pdfView) else { return }
-        let drawingGesture = canvas.drawingGestureRecognizer
-
-        // Ink wins over scrolling. Without this the PDF's pan recognizer
-        // claims the touch first and strokes never reach the canvas — the
-        // header for this callback exists to point at exactly this.
-        //
-        // Safe for the real configuration: under `.pencilOnly` the drawing
-        // recognizer only claims Pencil touches, so a finger still scrolls
-        // normally. Only pan is deferred — making pinch wait would cost zoom.
-        scrollView.panGestureRecognizer.require(toFail: drawingGesture)
+        self.pdfView = pdfView
+        applyTouchRouting()
     }
 
-    private static func scrollView(in view: UIView) -> UIScrollView? {
-        if let scrollView = view as? UIScrollView { return scrollView }
-        for subview in view.subviews {
-            if let found = scrollView(in: subview) { return found }
+    /// Decide, by touch *type*, what scrolls the lesson.
+    ///
+    /// Stating it this way rather than with gesture failure requirements,
+    /// which is what this used to do and what did not work on device. A
+    /// failure requirement only defers the one recognizer it is applied to —
+    /// finding "the" scroll view in PDFKit's hierarchy is guesswork, and
+    /// `PKCanvasView` is itself a `UIScrollView`, so the search could just as
+    /// easily have deferred a canvas's own pan and left PDFKit's untouched.
+    ///
+    /// Restricting allowed touch types is unambiguous: while marking is on,
+    /// the PDF scrolls for fingers only, so a Pencil touch has nowhere to go
+    /// but the canvas. Turn marking off and the Pencil scrolls again.
+    private func applyTouchRouting() {
+        guard let pdfView else { return }
+
+        // A finger and a trackpad always scroll; only the Pencil is switched
+        // between scrolling and marking.
+        var scrollTouchTypes: [UITouch.TouchType] = [.direct, .indirectPointer]
+        if !isDrawingEnabled { scrollTouchTypes.append(.pencil) }
+
+        let allowed = scrollTouchTypes.map { NSNumber(value: $0.rawValue) }
+        for scrollView in Self.scrollViews(in: pdfView) {
+            scrollView.panGestureRecognizer.allowedTouchTypes = allowed
         }
-        return nil
+    }
+
+    /// Every scroll view PDFKit uses, excluding the canvases — which are
+    /// themselves scroll views, and must keep their own input.
+    private static func scrollViews(in view: UIView) -> [UIScrollView] {
+        var found: [UIScrollView] = []
+        if let scrollView = view as? UIScrollView, !(view is PKCanvasView) {
+            found.append(scrollView)
+        }
+        for subview in view.subviews where !(subview is PKCanvasView) {
+            found.append(contentsOf: scrollViews(in: subview))
+        }
+        return found
     }
 
     func pdfView(_ pdfView: PDFView, willEndDisplayingOverlayView overlayView: UIView, for page: PDFPage) {
