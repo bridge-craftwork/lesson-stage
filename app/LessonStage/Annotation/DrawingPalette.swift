@@ -34,6 +34,17 @@ struct DrawingPalette: View {
                 }
                 .accessibilityLabel("Undo")
                 .accessibilityIdentifier("undo")
+
+                Button {
+                    host.canvases.clearAllMarks()
+                } label: {
+                    Image(systemName: "trash")
+                }
+                // No confirmation, by design: it is one undo away from being
+                // restored, which is faster than a dialog and just as safe.
+                .disabled(!(drawings?.hasAnnotations ?? false))
+                .accessibilityLabel("Clear all marks")
+                .accessibilityIdentifier("clearAllMarks")
             }
 
             #if DEBUG

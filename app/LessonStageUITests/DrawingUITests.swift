@@ -238,6 +238,39 @@ final class DrawingUITests: LessonStageUITestCase {
         XCTAssertTrue(expect(marks, toRead: "0"), "Undo should remove the last highlight, not just ink")
     }
 
+    func testClearAllMarksAndUndoRestores() {
+        let app = launchDrawing()
+        app.buttons["tool-Yellow highlighter"].tap()
+        let marks = annotatedPages(in: app)
+        XCTAssertTrue(marks.waitForExistence(timeout: 10))
+
+        // The mark count is per-page, so this proves the clear→undo round-trip
+        // end to end; the multi-page, ink+highlight breadth is covered by
+        // DrawingSetTests.testReplaceAllSwapsTheWholeSet.
+        let page = app.otherElements["pdfView"]
+        page.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.27))
+            .press(
+                forDuration: 0.2,
+                thenDragTo: page.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.27)),
+                withVelocity: .slow,
+                thenHoldForDuration: 0.2
+            )
+        XCTAssertTrue(expect(marks, toRead: "1"), "Precondition: a mark to clear")
+
+        app.buttons["clearAllMarks"].tap()
+        XCTAssertTrue(expect(marks, toRead: "0"), "Clear all should remove every mark, no prompt")
+
+        // What was cleared comes back in one undo.
+        app.buttons["undo"].tap()
+        XCTAssertTrue(expect(marks, toRead: "1"), "Undo should restore everything cleared")
+    }
+
+    func testClearAllIsDisabledWhenThereIsNothingToClear() {
+        let app = launchDrawing()
+        XCTAssertTrue(app.buttons["clearAllMarks"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["clearAllMarks"].isEnabled, "Nothing to clear on a fresh lesson")
+    }
+
     func testPaletteIsHiddenInPresentationMode() {
         let app = launchDrawing(extraArguments: ["-present"])
         XCTAssertTrue(app.otherElements["pdfView"].waitForExistence(timeout: 10))

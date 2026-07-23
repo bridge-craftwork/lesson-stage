@@ -86,11 +86,6 @@ final class PageCanvasProvider: NSObject {
     /// undo stack to consult.
     private(set) var lastEditedPage: Int?
 
-    /// The highlight annotation shown while a selection is being dragged, and
-    /// the page it sits on. Removed and rebuilt on each move; the same colour
-    /// as the committed highlight, so what you drag *is* what you get.
-    private var liveAnnotation: PDFAnnotation?
-    private weak var livePage: PDFPage?
 
     func undo() {
         guard let page = lastEditedPage, let canvas = liveCanvases[page] else { return }
@@ -107,6 +102,49 @@ final class PageCanvasProvider: NSObject {
     func reset() {
         liveCanvases.removeAll()
         lastEditedPage = nil
+    }
+
+    var hasMarks: Bool { drawings?.hasAnnotations ?? false }
+
+    /// Erase every mark on the document — ink and highlights, all pages — in
+    /// one step. No confirmation, by request, because it is a single undo away
+    /// from being restored: the whole prior state is snapshotted and the
+    /// restore registered as the undo.
+    func clearAllMarks() {
+        guard let drawings, drawings.hasAnnotations else { return }
+        replaceMarks(with: .init(), previous: drawings.snapshot)
+    }
+
+    /// Swap the entire annotation set, syncing the live canvases and pages, and
+    /// register the inverse so one undo brings it all back. Used by clear-all
+    /// and its own undo.
+    private func replaceMarks(with contents: DrawingStore.Contents, previous: DrawingStore.Contents) {
+        guard let drawings else { return }
+        drawings.replaceAll(with: contents)
+
+        // Ink: push the new drawing into every on-screen canvas.
+        for (index, canvas) in liveCanvases {
+            canvas.drawing = drawings.drawing(forPage: index)
+        }
+        // Highlights: redraw every page that had, or now has, any.
+        if let document = pdfView?.document {
+            let touched = Set(previous.highlights.keys).union(contents.highlights.keys)
+            for index in touched {
+                if let page = document.page(at: index) { rerenderHighlights(on: page, index: index) }
+            }
+        }
+
+        // One undo restores the whole prior state.
+        undoManagerForClearing?.registerUndo(withTarget: self) { provider in
+            provider.replaceMarks(with: previous, previous: contents)
+        }
+    }
+
+    /// Clear-all is document-wide, so its undo cannot hang off one page's
+    /// canvas. Any live canvas's undo manager will do — they share the window's
+    /// — falling back to the first available.
+    private var undoManagerForClearing: UndoManager? {
+        liveCanvases[lastEditedPage ?? -1]?.undoManager ?? liveCanvases.values.first?.undoManager
     }
 }
 
@@ -342,29 +380,12 @@ extension PageCanvasProvider: CopyModeRouter {
         )
     }
 
-    func showLiveSelection(_ selection: PDFSelection?) {
-        clearLiveSelection()
-
-        // Draw the live highlight in the tool's colour rather than relying on
-        // PDFView's text-selection rendering, which barely shows during a
-        // drag. This is the actual highlight growing under the Pencil.
-        guard let selection,
-              case .highlighter(let color) = tool,
-              let page = selection.pages.first,
-              let highlight = HighlightFactory.make(from: selection, on: page, color: color)
-        else { return }
-
-        let annotation = HighlightFactory.annotation(for: highlight)
-        page.addAnnotation(annotation)
-        liveAnnotation = annotation
-        livePage = page
-    }
-
-    func clearLiveSelection() {
-        if let liveAnnotation, let livePage { livePage.removeAnnotation(liveAnnotation) }
-        liveAnnotation = nil
-        livePage = nil
-    }
+    // No live preview: the highlight appears on release, which is correct
+    // GoodReader-parity and avoids the per-move annotation churn that a live
+    // preview needs. If a growing-under-the-Pencil preview is wanted later,
+    // it goes here — deliberately, not as the default.
+    func showLiveSelection(_ selection: PDFSelection?) {}
+    func clearLiveSelection() {}
 
     func commitHighlight(_ selection: PDFSelection, onPage index: Int) {
         guard let page = pdfView?.document?.page(at: index),

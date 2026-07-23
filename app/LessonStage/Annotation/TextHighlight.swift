@@ -87,14 +87,21 @@ enum HighlightFactory {
         let annotation = PDFAnnotation(bounds: bounds, forType: .highlight, withProperties: nil)
         annotation.color = color.uiColor
 
-        // Four points per line, in page space. PDF QuadPoints order is
-        // upper-left, upper-right, lower-left, lower-right.
-        annotation.quadrilateralPoints = rects.flatMap { rect in
-            [
-                NSValue(cgPoint: CGPoint(x: rect.minX, y: rect.maxY)),
-                NSValue(cgPoint: CGPoint(x: rect.maxX, y: rect.maxY)),
-                NSValue(cgPoint: CGPoint(x: rect.minX, y: rect.minY)),
-                NSValue(cgPoint: CGPoint(x: rect.maxX, y: rect.minY)),
+        // Four points per line. Despite the SDK header saying "page space",
+        // PDFKit reads quadrilateralPoints **relative to the annotation's
+        // bounds origin** — the well-known gotcha, and the cause of highlights
+        // landing up and to the right of the text. Offset each corner by the
+        // bounds origin. PDF QuadPoints order is UL, UR, LL, LR.
+        annotation.quadrilateralPoints = rects.flatMap { rect -> [NSValue] in
+            let x0 = rect.minX - bounds.minX
+            let x1 = rect.maxX - bounds.minX
+            let y0 = rect.minY - bounds.minY
+            let y1 = rect.maxY - bounds.minY
+            return [
+                NSValue(cgPoint: CGPoint(x: x0, y: y1)),
+                NSValue(cgPoint: CGPoint(x: x1, y: y1)),
+                NSValue(cgPoint: CGPoint(x: x0, y: y0)),
+                NSValue(cgPoint: CGPoint(x: x1, y: y0)),
             ]
         }
 

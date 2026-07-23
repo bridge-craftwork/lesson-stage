@@ -50,6 +50,18 @@ final class DrawingSet {
         drawings[index] ?? PKDrawing()
     }
 
+    /// A snapshot of everything, for a wholesale replace — how "clear all" and
+    /// its undo move the entire annotation set at once.
+    var snapshot: DrawingStore.Contents {
+        DrawingStore.Contents(drawings: drawings, highlights: highlights)
+    }
+
+    func replaceAll(with contents: DrawingStore.Contents) {
+        drawings = contents.drawings
+        highlights = contents.highlights
+        scheduleSave()
+    }
+
     func update(_ drawing: PKDrawing, forPage index: Int) {
         // Identical redraws arrive routinely — attaching a canvas to a page
         // reports its own initial contents as a change.

@@ -356,6 +356,20 @@ final class DrawingSetTests: XCTestCase {
         XCTAssertTrue(set.drawing(forPage: 0).strokes.isEmpty)
     }
 
+    func testReplaceAllSwapsTheWholeSet() {
+        let set = makeSet()
+        set.update(strokedDrawing(), forPage: 0)
+        set.addHighlight(aHighlight(), toPage: 1)
+        let before = set.snapshot
+
+        set.replaceAll(with: .init())
+        XCTAssertFalse(set.hasAnnotations, "Clearing leaves nothing")
+
+        set.replaceAll(with: before)
+        XCTAssertEqual(set.drawing(forPage: 0).strokes.count, 1, "Restore brings ink back")
+        XCTAssertEqual(set.highlights(forPage: 1).count, 1, "…and highlights")
+    }
+
     func testRemovingAHighlightById() {
         let set = makeSet()
         let keep = aHighlight(.blue)
