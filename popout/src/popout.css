@@ -1,0 +1,29 @@
+/* The vendored components carry their own visual contract: scoped styles with
+ * literal colours (`.suit-black { color: #1a1a1a }`, card text at #1a1a1a),
+ * designed against a LIGHT table surface. The popout supplies that surface
+ * rather than overriding it — a dark theme here makes the black suits
+ * invisible, and the only way to force one is forking the components, which
+ * is exactly the drift the vendoring rules exist to prevent.
+ *
+ * The app chrome around the popout stays dark; the popout is a lit table
+ * sitting in it, which is also how the deal reads on a projector. */
+:root {
+  color-scheme: light;
+  --popout-bg: #f7f7f8;
+  --popout-fg: #1a1a1a;
+  --popout-dim: #6b6b70;
+  --popout-line: #d8d8dc;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--popout-bg);
+  color: var(--popout-fg);
+  font: 15px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  /* A projected popout is tap-driven; text selection and callouts are noise. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
