@@ -12,6 +12,48 @@ struct LessonStageView: View {
     @State private var isImporting = false
     @State private var pdfHost = PDFViewHost()
 
+    // Auto-hide chrome. The tab strip and controls fade out after a few idle
+    // seconds so the projector shows a clean page; a finger tap on the page
+    // brings them back. A Pencil stroke goes to the canvas, not this gesture,
+    // so annotating never reveals the chrome — students see a clean,
+    // live-annotated page, which is the point.
+    @State private var chromeVisible = true
+    @State private var hideTask: Task<Void, Never>?
+
+    /// How long the chrome lingers after the last reveal. Short under a test
+    /// flag so the behaviour can be exercised without a real wait.
+    private var chromeIdleHide: Duration {
+        // 2.5s under the test flag: long enough for XCUITest to observe the
+        // revealed state before it fades, short enough to keep the test quick.
+        ProcessInfo.processInfo.arguments.contains("-fastChrome") ? .milliseconds(2500) : .seconds(5)
+    }
+
+    /// Chrome is shown only when revealed and not in the explicit presentation
+    /// mode. When hidden either way, the page goes edge-to-edge with the status
+    /// bar tucked away — the same clean look on the projector.
+    private var showChrome: Bool { chromeVisible && !session.isPresenting }
+
+    private func scheduleChromeHide() {
+        hideTask?.cancel()
+        // Nothing to clean up with no lesson open — the empty state keeps its
+        // buttons.
+        guard session.selectedTab != nil else { return }
+        // Tests that aren't about auto-hide pin the chrome open, so an idle
+        // fade cannot pull a tab or tool out from under them.
+        if ProcessInfo.processInfo.arguments.contains("-noAutoHide") { return }
+        let delay = chromeIdleHide
+        hideTask = Task { @MainActor in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.35)) { chromeVisible = false }
+        }
+    }
+
+    private func revealChrome() {
+        withAnimation(.easeInOut(duration: 0.2)) { chromeVisible = true }
+        scheduleChromeHide()
+    }
+
     /// Hand the canvases somewhere to report input problems. Debug builds
     /// only; in a shipping build nothing is listening.
     private func attachDiagnostics() {
@@ -22,8 +64,9 @@ struct LessonStageView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !session.isPresenting {
+            if showChrome {
                 TabStrip(openDocuments: { isImporting = true })
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 Divider()
             }
             readingArea
@@ -31,19 +74,29 @@ struct LessonStageView: View {
         // Dark surround: the projector shows this behind every page.
         .background(Color.presentationSurround)
         .overlay(alignment: .topTrailing) { presentationExit }
-        .statusBarHidden(session.isPresenting)
+        .statusBarHidden(!showChrome)
         .fileImporter(
             isPresented: $isImporting,
             allowedContentTypes: [.pdf],
             allowsMultipleSelection: true
         ) { result in
             switch result {
-            case .success(let urls): session.open(urls: urls)
+            case .success(let urls):
+                session.open(urls: urls)
+                revealChrome()
             case .failure: break // Cancelling is a `.failure`; nothing to report.
             }
         }
         .sheet(isPresented: $showPopout) { PopoutSheet() }
         .onAppear { attachDiagnostics() }
+        // `initial: true` starts the idle countdown once the first lesson is
+        // open, regardless of whether that happened before or after this view
+        // appeared — the fixture opens in the app's launch task, which races
+        // `onAppear`. Switching tabs later reveals and restarts it.
+        .onChange(of: session.selectedTabID, initial: true) { _, _ in revealChrome() }
+        // Picking a tool restarts the countdown rather than letting the chrome
+        // fade mid-task.
+        .onChange(of: session.tool) { _, _ in if showChrome { scheduleChromeHide() } }
     }
 
     @ViewBuilder
@@ -63,7 +116,7 @@ struct LessonStageView: View {
     private var documentArea: some View {
         if let tab = session.selectedTab {
             HStack(spacing: 0) {
-                if session.showsThumbnails && !session.isPresenting {
+                if session.showsThumbnails && showChrome {
                     ThumbnailSidebar(host: pdfHost)
                         .frame(width: 132)
                         .transition(.move(edge: .leading))
@@ -74,7 +127,10 @@ struct LessonStageView: View {
                     PDFDocumentView(host: pdfHost, tab: tab) { pageIndex in
                         session.recordPage(pageIndex, for: tab.id)
                     }
-                    .ignoresSafeArea(edges: session.isPresenting ? .all : [])
+                    .ignoresSafeArea(edges: showChrome ? [] : .all)
+                    // A finger tap reveals the chrome; runs alongside the PDF's
+                    // own scroll/zoom/draw rather than blocking them.
+                    .simultaneousGesture(TapGesture().onEnded { revealChrome() })
 
                     if let failure = tab.loadFailure {
                         Text(failure)
@@ -82,11 +138,12 @@ struct LessonStageView: View {
                             .padding()
                             .background(.thinMaterial, in: .rect(cornerRadius: 10))
                             .padding()
-                    } else if !session.isPresenting {
+                    } else if showChrome {
                         VStack(spacing: 10) {
                             DrawingPalette(host: pdfHost, drawings: tab.drawings)
                             ReadingControls(tab: tab)
                         }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
             }

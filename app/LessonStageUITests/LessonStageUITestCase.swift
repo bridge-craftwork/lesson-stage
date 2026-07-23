@@ -39,9 +39,15 @@ class LessonStageUITestCase: XCTestCase {
     }
 
     /// Launch with both fixtures open and a clean session.
+    ///
+    /// Chrome auto-hide is pinned off by default — a fade mid-test would pull
+    /// tabs and tools out from under assertions. The auto-hide test opts back
+    /// in with `-fastChrome` and omits `-noAutoHide`.
     @discardableResult
     func launchWithFixtures(extraArguments: [String] = []) -> XCUIApplication {
-        app.launchArguments = ["-reset", "-open"] + fixtureURLs.map(\.path) + extraArguments
+        var args = ["-reset", "-open"] + fixtureURLs.map(\.path) + extraArguments
+        if !extraArguments.contains("-fastChrome") { args.append("-noAutoHide") }
+        app.launchArguments = args
         app.launch()
         return app
     }
