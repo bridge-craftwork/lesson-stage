@@ -69,20 +69,40 @@ enum HighlightFactory {
         a.minX < b.maxX && b.minX < a.maxX
     }
 
-    /// The PDF annotations that draw a highlight.
+    /// The single PDF annotation that draws a highlight.
     ///
-    /// Added to the in-memory document only. The file on disk is never
-    /// written — same rule as the ink, and the reason both live in the sidecar.
-    static func annotations(for highlight: TextHighlight) -> [PDFAnnotation] {
-        highlight.rects.map { rect in
-            let annotation = PDFAnnotation(bounds: rect, forType: .highlight, withProperties: nil)
-            annotation.color = highlight.color.uiColor
-            // Tagged so our own annotations can be told apart from the ones
-            // the lesson shipped with — Contract 5's `lesson-block:` links are
-            // annotations too, and must never be swept up.
-            annotation.userName = Self.ownerTag
-            return annotation
+    /// One annotation with a quad per line, **not** one annotation per line.
+    /// A `.highlight` annotation multiplies its colour onto the page, so two
+    /// of them touching darken where they meet — the banding seen across
+    /// multi-line highlights. Collapsing the lines into one annotation's
+    /// quads makes the multiply apply once, uniformly.
+    ///
+    /// Added to the in-memory document only; the file on disk is never written.
+    static func annotation(for highlight: TextHighlight) -> PDFAnnotation {
+        annotation(rects: highlight.rects, color: highlight.color)
+    }
+
+    static func annotation(rects: [CGRect], color: PenColor) -> PDFAnnotation {
+        let bounds = rects.reduce(CGRect.null) { $0.union($1) }
+        let annotation = PDFAnnotation(bounds: bounds, forType: .highlight, withProperties: nil)
+        annotation.color = color.uiColor
+
+        // Four points per line, in page space. PDF QuadPoints order is
+        // upper-left, upper-right, lower-left, lower-right.
+        annotation.quadrilateralPoints = rects.flatMap { rect in
+            [
+                NSValue(cgPoint: CGPoint(x: rect.minX, y: rect.maxY)),
+                NSValue(cgPoint: CGPoint(x: rect.maxX, y: rect.maxY)),
+                NSValue(cgPoint: CGPoint(x: rect.minX, y: rect.minY)),
+                NSValue(cgPoint: CGPoint(x: rect.maxX, y: rect.minY)),
+            ]
         }
+
+        // Tagged so our own annotations can be told apart from the ones the
+        // lesson shipped with — Contract 5's `lesson-block:` links are
+        // annotations too, and must never be swept up.
+        annotation.userName = Self.ownerTag
+        return annotation
     }
 
     static let ownerTag = "lesson-stage.highlight"

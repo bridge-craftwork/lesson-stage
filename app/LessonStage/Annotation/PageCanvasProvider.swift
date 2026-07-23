@@ -86,6 +86,12 @@ final class PageCanvasProvider: NSObject {
     /// undo stack to consult.
     private(set) var lastEditedPage: Int?
 
+    /// The highlight annotation shown while a selection is being dragged, and
+    /// the page it sits on. Removed and rebuilt on each move; the same colour
+    /// as the committed highlight, so what you drag *is* what you get.
+    private var liveAnnotation: PDFAnnotation?
+    private weak var livePage: PDFPage?
+
     func undo() {
         guard let page = lastEditedPage, let canvas = liveCanvases[page] else { return }
         canvas.undoManager?.undo()
@@ -337,13 +343,27 @@ extension PageCanvasProvider: CopyModeRouter {
     }
 
     func showLiveSelection(_ selection: PDFSelection?) {
-        // PDFView draws its own current selection; reuse it for feedback rather
-        // than drawing a second overlay that could disagree with it.
-        pdfView?.setCurrentSelection(selection, animate: false)
+        clearLiveSelection()
+
+        // Draw the live highlight in the tool's colour rather than relying on
+        // PDFView's text-selection rendering, which barely shows during a
+        // drag. This is the actual highlight growing under the Pencil.
+        guard let selection,
+              case .highlighter(let color) = tool,
+              let page = selection.pages.first,
+              let highlight = HighlightFactory.make(from: selection, on: page, color: color)
+        else { return }
+
+        let annotation = HighlightFactory.annotation(for: highlight)
+        page.addAnnotation(annotation)
+        liveAnnotation = annotation
+        livePage = page
     }
 
     func clearLiveSelection() {
-        pdfView?.setCurrentSelection(nil, animate: false)
+        if let liveAnnotation, let livePage { livePage.removeAnnotation(liveAnnotation) }
+        liveAnnotation = nil
+        livePage = nil
     }
 
     func commitHighlight(_ selection: PDFSelection, onPage index: Int) {
@@ -381,14 +401,11 @@ extension PageCanvasProvider: CopyModeRouter {
     }
 
     private func addAnnotations(for highlight: TextHighlight, to page: PDFPage) {
-        for annotation in HighlightFactory.annotations(for: highlight) {
-            page.addAnnotation(annotation)
-        }
+        page.addAnnotation(HighlightFactory.annotation(for: highlight))
     }
 
     /// Redraw a page's highlight annotations from the model — the model is the
-    /// source of truth, and a highlight is several annotations that move
-    /// together.
+    /// source of truth.
     private func rerenderHighlights(on page: PDFPage, index: Int) {
         removeOwnedHighlightAnnotations(from: page)
         for highlight in drawings?.highlights(forPage: index) ?? [] {
@@ -402,9 +419,7 @@ extension PageCanvasProvider: CopyModeRouter {
         for (index, highlights) in drawings.highlights {
             guard let page = document.page(at: index) else { continue }
             for highlight in highlights {
-                for annotation in HighlightFactory.annotations(for: highlight) {
-                    page.addAnnotation(annotation)
-                }
+                addAnnotations(for: highlight, to: page)
             }
         }
     }
