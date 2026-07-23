@@ -35,7 +35,38 @@ enum HighlightFactory {
             .filter { !$0.isEmpty && $0.width > 1 && $0.height > 1 }
 
         guard !rects.isEmpty else { return nil }
-        return TextHighlight(rects: rects, color: color)
+        return TextHighlight(rects: deoverlap(rects), color: color)
+    }
+
+    /// Trim vertical overlap between stacked line rects so a translucent
+    /// `.highlight` annotation does not double up and darken where consecutive
+    /// lines' bounding boxes overlap (they include leading, so they do).
+    ///
+    /// Only rects that share horizontal span are trimmed against each other —
+    /// two columns of a lesson have disjoint x-ranges and must stay
+    /// independent, or a highlight in the left column would be clipped by one
+    /// in the right.
+    static func deoverlap(_ rects: [CGRect]) -> [CGRect] {
+        // Top line first: PDF space is y-up, so a higher minY is higher on the page.
+        let ordered = rects.sorted { $0.minY > $1.minY }
+        var placed: [CGRect] = []
+
+        for var rect in ordered {
+            for above in placed where horizontallyOverlaps(above, rect) {
+                // Lower the top of this rect to meet the bottom of the one above.
+                if rect.maxY > above.minY {
+                    let newMaxY = above.minY
+                    rect = CGRect(x: rect.minX, y: rect.minY,
+                                  width: rect.width, height: max(0, newMaxY - rect.minY))
+                }
+            }
+            if rect.height > 0.5 { placed.append(rect) }
+        }
+        return placed
+    }
+
+    private static func horizontallyOverlaps(_ a: CGRect, _ b: CGRect) -> Bool {
+        a.minX < b.maxX && b.minX < a.maxX
     }
 
     /// The PDF annotations that draw a highlight.

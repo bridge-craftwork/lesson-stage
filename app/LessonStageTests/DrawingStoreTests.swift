@@ -355,4 +355,52 @@ final class DrawingSetTests: XCTestCase {
         XCTAssertTrue(set.highlights(forPage: 0).isEmpty)
         XCTAssertTrue(set.drawing(forPage: 0).strokes.isEmpty)
     }
+
+    func testRemovingAHighlightById() {
+        let set = makeSet()
+        let keep = aHighlight(.blue)
+        let drop = aHighlight(.yellow)
+        set.addHighlight(keep, toPage: 0)
+        set.addHighlight(drop, toPage: 0)
+
+        XCTAssertTrue(set.removeHighlight(id: drop.id, fromPage: 0))
+        XCTAssertEqual(set.highlights(forPage: 0).map(\.id), [keep.id], "Only the named highlight goes")
+        XCTAssertFalse(set.removeHighlight(id: drop.id, fromPage: 0), "Removing it again is a no-op")
+    }
+}
+
+final class HighlightGeometryTests: XCTestCase {
+    /// PDF space is y-up, so these rects are two stacked lines whose bounding
+    /// boxes overlap by 4pt — the leading that makes translucent highlights
+    /// darken where lines meet.
+    func testStackedLinesAreDeoverlapped() {
+        let upper = CGRect(x: 50, y: 100, width: 200, height: 16)   // y 100–116
+        let lower = CGRect(x: 50, y: 88, width: 200, height: 16)    // y 88–104, overlaps 100–104
+
+        let result = HighlightFactory.deoverlap([lower, upper])
+
+        XCTAssertEqual(result.count, 2)
+        // Sorted top-first; the lower line's top is trimmed to the upper's bottom.
+        let top = result[0], bottom = result[1]
+        XCTAssertEqual(top.minY, 100, accuracy: 0.01)
+        XCTAssertLessThanOrEqual(bottom.maxY, top.minY + 0.01, "Lines must not overlap after trimming")
+    }
+
+    func testTwoColumnsAreLeftIndependent() {
+        // Same vertical band, disjoint horizontally — a two-column lesson.
+        let left = CGRect(x: 50, y: 100, width: 100, height: 16)
+        let right = CGRect(x: 300, y: 100, width: 100, height: 16)
+
+        let result = HighlightFactory.deoverlap([left, right])
+
+        XCTAssertEqual(result.count, 2)
+        XCTAssertTrue(result.contains { $0.height == 16 && $0.minX == 50 })
+        XCTAssertTrue(result.contains { $0.height == 16 && $0.minX == 300 },
+                      "A column highlight must not be clipped by one in the other column")
+    }
+
+    func testASingleLineIsUnchanged() {
+        let rect = CGRect(x: 50, y: 100, width: 200, height: 16)
+        XCTAssertEqual(HighlightFactory.deoverlap([rect]), [rect])
+    }
 }

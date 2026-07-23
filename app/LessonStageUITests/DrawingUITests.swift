@@ -210,6 +210,34 @@ final class DrawingUITests: LessonStageUITestCase {
         XCTAssertTrue(expect(restored, toRead: "1"), "The highlight should be restored from the sidecar")
     }
 
+    /// Device-only: under `-fingerDrawing` the highlighter keeps PencilKit ink
+    /// enabled so a test finger can reach the canvas, which means a finger
+    /// highlight also leaves a marker stroke and muddies the undo stack. On a
+    /// device the highlighter is ink-free, so undo removes only the highlight.
+    /// The remove-by-id logic is unit-tested in `DrawingSetTests`.
+    func testUndoRemovesAHighlight() throws {
+        try skipUnlessStrokesArePossible()
+        let app = launchDrawing()
+        app.buttons["tool-Yellow highlighter"].tap()
+        let marks = annotatedPages(in: app)
+        XCTAssertTrue(marks.waitForExistence(timeout: 10))
+
+        let page = app.otherElements["pdfView"]
+        page.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.155))
+            .press(
+                forDuration: 0.2,
+                thenDragTo: page.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.155)),
+                withVelocity: .slow,
+                thenHoldForDuration: 0.2
+            )
+        XCTAssertTrue(expect(marks, toRead: "1"), "Precondition: a highlight to undo")
+
+        // The undo button — not the eraser — must take a highlight back.
+        app.buttons["undo"].tap()
+
+        XCTAssertTrue(expect(marks, toRead: "0"), "Undo should remove the last highlight, not just ink")
+    }
+
     func testPaletteIsHiddenInPresentationMode() {
         let app = launchDrawing(extraArguments: ["-present"])
         XCTAssertTrue(app.otherElements["pdfView"].waitForExistence(timeout: 10))

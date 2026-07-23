@@ -101,15 +101,19 @@ final class PageCanvasView: PKCanvasView {
         guard let router, router.isCopyModeActive else { return false }
 
         let point = hostPoint(for: touch)
-        guard router.hasCharacter(at: point) else {
+        guard let initial = router.initialSelection(at: point) else {
             diagnostics?.recordCoalesced("copy-mode — whitespace, inking")
             return false
         }
 
+        // PencilKit's ink is already suppressed for the highlighter tool (its
+        // drawing recognizer is disabled at tool-switch, not here — disabling
+        // mid-touch cancels the whole gesture). So the only feedback is the
+        // text selection, shown from the first character, matching GoodReader.
         selectionStart = point
-        activeSelection = router.selection(from: point, to: point)
-        router.showLiveSelection(activeSelection)
-        diagnostics?.record("copy-mode — on text, highlighting")
+        activeSelection = initial
+        router.showLiveSelection(initial)
+        diagnostics?.record("copy-mode — on text, selecting")
         return true
     }
 
@@ -162,9 +166,11 @@ protocol CopyModeRouter: AnyObject {
     /// was there.
     func eraseHighlight(at point: CGPoint) -> Bool
 
-    /// Whether a character sits under a point in PDF-view space. False for
-    /// whitespace. This is the whole routing decision.
-    func hasCharacter(at point: CGPoint) -> Bool
+    /// The selection of the single character under a point in PDF-view space,
+    /// or nil for whitespace. Non-nil is the whole routing decision *and* the
+    /// first frame of selection feedback — the reason it returns the selection
+    /// rather than a bare bool.
+    func initialSelection(at point: CGPoint) -> PDFSelection?
 
     /// A selection between two points in PDF-view space.
     func selection(from: CGPoint, to: CGPoint) -> PDFSelection?

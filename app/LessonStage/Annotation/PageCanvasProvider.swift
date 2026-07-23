@@ -22,9 +22,34 @@ final class PageCanvasProvider: NSObject {
     var tool: DrawingTool = .pen(.black) {
         didSet {
             guard tool != oldValue else { return }
-            for canvas in liveCanvases.values { canvas.tool = tool.pkTool }
+            for canvas in liveCanvases.values { apply(tool, to: canvas) }
         }
     }
+
+    /// Point a canvas at the current tool, and switch PencilKit's ink off for
+    /// the highlighter so the only feedback on text is the selection — no stray
+    /// marker painting under the Pencil. Done at tool-switch, never mid-touch:
+    /// disabling the drawing recognizer during a gesture cancels it.
+    ///
+    /// Exception under `-fingerDrawing`: the tests drive the highlighter with a
+    /// finger, and in marking mode fingers scroll — so with ink off the scroll
+    /// pan would claim the finger before the selection could form. Keeping ink
+    /// enabled makes PencilKit's recognizer block the pan, letting the finger
+    /// reach the canvas. On a real device the highlighter is a Pencil, which
+    /// never triggers the fingers-only pan, so ink stays off and the marker
+    /// never shows.
+    private func apply(_ tool: DrawingTool, to canvas: PageCanvasView) {
+        canvas.tool = tool.pkTool
+        canvas.drawingGestureRecognizer.isEnabled = !isCopyModeActive || Self.fingerDrawingForTests
+    }
+
+    private static let fingerDrawingForTests: Bool = {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-fingerDrawing")
+        #else
+        return false
+        #endif
+    }()
 
     /// When false the canvases stop taking input entirely, so a Pencil scrolls
     /// the lesson instead of marking it — which is what you want mid-lesson
@@ -224,8 +249,8 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
         canvas.router = self
         canvas.tag = index
         canvas.delegate = self
-        canvas.tool = tool.pkTool
         canvas.drawingPolicy = drawingPolicy
+        apply(tool, to: canvas)
         canvas.isUserInteractionEnabled = isDrawingEnabled
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
@@ -259,17 +284,7 @@ extension PageCanvasProvider: CopyModeRouter {
         let pagePoint = pdfView.convert(viewPoint, to: page)
 
         guard drawings?.removeHighlight(atPage: index, containing: pagePoint) == true else { return false }
-
-        // Rebuild the page's highlight annotations from the surviving model,
-        // rather than hunting the one annotation to delete: the model is the
-        // source of truth, and a highlight is several annotations (one per
-        // line) that must go together.
-        removeOwnedHighlightAnnotations(from: page)
-        for highlight in drawings?.highlights(forPage: index) ?? [] {
-            for annotation in HighlightFactory.annotations(for: highlight) {
-                page.addAnnotation(annotation)
-            }
-        }
+        rerenderHighlights(on: page, index: index)
         lastEditedPage = index
         return true
     }
@@ -288,8 +303,8 @@ extension PageCanvasProvider: CopyModeRouter {
     /// coordinates to a page's — UIKit is top-left, PDF space is bottom-left,
     /// and letting PDFKit bridge the two is what keeps the hit-test landing
     /// where the finger actually is.
-    func hasCharacter(at viewPoint: CGPoint) -> Bool {
-        guard let pdfView, let page = pdfView.page(for: viewPoint, nearest: true) else { return false }
+    func initialSelection(at viewPoint: CGPoint) -> PDFSelection? {
+        guard let pdfView, let page = pdfView.page(for: viewPoint, nearest: true) else { return nil }
         let pagePoint = pdfView.convert(viewPoint, to: page)
 
         // `characterIndex(at:)` does NOT return -1 for a point off every glyph
@@ -298,13 +313,17 @@ extension PageCanvasProvider: CopyModeRouter {
         // touch to highlighting and make inking impossible. The real test is
         // whether that character's bounds actually contain the point.
         let index = page.characterIndex(at: pagePoint)
-        guard index >= 0 else { return false }
+        guard index >= 0 else { return nil }
 
         let bounds = page.characterBounds(at: index)
         // A small inset of slack, so a touch just above or below a glyph still
         // counts as "on the line" — matching the feel of dragging a highlight
         // along text rather than needing to be dead-centre on the glyph.
-        return bounds.insetBy(dx: -2, dy: -2).contains(pagePoint)
+        guard bounds.insetBy(dx: -2, dy: -2).contains(pagePoint) else { return nil }
+
+        // Select that one character, so the drag has visible feedback from the
+        // very first frame rather than only on release.
+        return page.selection(for: NSRange(location: index, length: 1))
     }
 
     func selection(from: CGPoint, to: CGPoint) -> PDFSelection? {
@@ -332,12 +351,49 @@ extension PageCanvasProvider: CopyModeRouter {
               case .highlighter(let color) = tool,
               let highlight = HighlightFactory.make(from: selection, on: page, color: color)
         else { return }
+        applyHighlight(highlight, onPage: index)
+        lastEditedPage = index
+    }
 
+    /// Add a highlight and register its removal as the undo. Paired with
+    /// `revertHighlight`, which registers this back as the redo — the standard
+    /// symmetric undo pattern.
+    ///
+    /// Registered on the committing canvas's undo manager, the same one
+    /// PencilKit uses for ink, so the single undo button steps back through ink
+    /// and highlights together in the order they were made.
+    private func applyHighlight(_ highlight: TextHighlight, onPage index: Int) {
+        guard let page = pdfView?.document?.page(at: index) else { return }
         drawings?.addHighlight(highlight, toPage: index)
+        addAnnotations(for: highlight, to: page)
+        liveCanvases[index]?.undoManager?.registerUndo(withTarget: self) { provider in
+            provider.revertHighlight(highlight, onPage: index)
+        }
+    }
+
+    private func revertHighlight(_ highlight: TextHighlight, onPage index: Int) {
+        guard let page = pdfView?.document?.page(at: index) else { return }
+        drawings?.removeHighlight(id: highlight.id, fromPage: index)
+        rerenderHighlights(on: page, index: index)
+        liveCanvases[index]?.undoManager?.registerUndo(withTarget: self) { provider in
+            provider.applyHighlight(highlight, onPage: index)
+        }
+    }
+
+    private func addAnnotations(for highlight: TextHighlight, to page: PDFPage) {
         for annotation in HighlightFactory.annotations(for: highlight) {
             page.addAnnotation(annotation)
         }
-        lastEditedPage = index
+    }
+
+    /// Redraw a page's highlight annotations from the model — the model is the
+    /// source of truth, and a highlight is several annotations that move
+    /// together.
+    private func rerenderHighlights(on page: PDFPage, index: Int) {
+        removeOwnedHighlightAnnotations(from: page)
+        for highlight in drawings?.highlights(forPage: index) ?? [] {
+            addAnnotations(for: highlight, to: page)
+        }
     }
 
     /// Restore a document's saved highlights as annotations when it loads.

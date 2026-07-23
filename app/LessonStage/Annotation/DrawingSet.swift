@@ -78,6 +78,20 @@ final class DrawingSet {
         scheduleSave()
     }
 
+    /// Remove a highlight by identity — the undo of `addHighlight`. Returns
+    /// whether it was found.
+    @discardableResult
+    func removeHighlight(id: TextHighlight.ID, fromPage index: Int) -> Bool {
+        guard var pageHighlights = highlights[index] else { return false }
+        let before = pageHighlights.count
+        pageHighlights.removeAll { $0.id == id }
+        guard pageHighlights.count != before else { return false }
+
+        highlights[index] = pageHighlights.isEmpty ? nil : pageHighlights
+        scheduleSave()
+        return true
+    }
+
     /// Remove any highlight on `page` covering `point` — the eraser reaching a
     /// highlight rather than ink. Returns whether anything was removed.
     @discardableResult
