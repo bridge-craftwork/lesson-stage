@@ -40,6 +40,13 @@ final class LessonSession {
 
     var tool: DrawingTool = .pen(.black)
 
+    #if DEBUG
+    /// The diagnostics tab, and whether it is the one showing. Debug builds
+    /// only — this is a development instrument, not a feature.
+    let diagnostics = CanvasDiagnostics()
+    var showsDiagnostics = false
+    #endif
+
     private let store: SessionStore
 
     init(store: SessionStore = SessionStore()) {

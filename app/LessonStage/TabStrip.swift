@@ -35,6 +35,10 @@ struct TabStrip: View {
                             )
                         )
                     }
+                    #if DEBUG
+                    DiagnosticsTabButton()
+                    #endif
+
                     Spacer(minLength: 0)
                 }
             }
@@ -55,6 +59,31 @@ struct TabStrip: View {
         .background(Color.tabStripSurface)
     }
 }
+
+#if DEBUG
+/// Sits at the end of the strip and behaves like a tab, but shows the input
+/// diagnostics rather than a document.
+private struct DiagnosticsTabButton: View {
+    @Environment(LessonSession.self) private var session
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "ladybug")
+                .font(.caption)
+            Text("Debug")
+                .font(.subheadline)
+        }
+        .foregroundStyle(session.showsDiagnostics ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+        .padding(.horizontal, 12)
+        .frame(maxHeight: .infinity)
+        .background(session.showsDiagnostics ? Color.selectedTab : Color.clear)
+        .contentShape(.rect)
+        .onTapGesture { session.showsDiagnostics.toggle() }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("tab-diagnostics")
+    }
+}
+#endif
 
 private struct TabDropDelegate: DropDelegate {
     let targetID: LessonTab.ID

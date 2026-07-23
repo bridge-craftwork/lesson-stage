@@ -12,6 +12,14 @@ struct LessonStageView: View {
     @State private var isImporting = false
     @State private var pdfHost = PDFViewHost()
 
+    /// Hand the canvases somewhere to report input problems. Debug builds
+    /// only; in a shipping build nothing is listening.
+    private func attachDiagnostics() {
+        #if DEBUG
+        pdfHost.canvases.diagnostics = session.diagnostics
+        #endif
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if !session.isPresenting {
@@ -35,10 +43,24 @@ struct LessonStageView: View {
             }
         }
         .sheet(isPresented: $showPopout) { PopoutSheet() }
+        .onAppear { attachDiagnostics() }
     }
 
     @ViewBuilder
     private var readingArea: some View {
+        #if DEBUG
+        if session.showsDiagnostics {
+            DiagnosticsView(diagnostics: session.diagnostics)
+        } else {
+            documentArea
+        }
+        #else
+        documentArea
+        #endif
+    }
+
+    @ViewBuilder
+    private var documentArea: some View {
         if let tab = session.selectedTab {
             HStack(spacing: 0) {
                 if session.showsThumbnails && !session.isPresenting {

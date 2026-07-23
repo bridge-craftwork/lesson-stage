@@ -81,6 +81,26 @@ final class DrawingUITests: LessonStageUITestCase {
         XCTAssertTrue(expect(marks, toRead: "1"), "A stroke should mark the page")
     }
 
+    func testDiagnosticsTabShowsInputActivity() {
+        let app = launchDrawing()
+        let debugTab = app.descendants(matching: .any)["tab-diagnostics"].firstMatch
+        XCTAssertTrue(debugTab.waitForExistence(timeout: 10))
+
+        debugTab.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["diagnosticsView"].firstMatch.waitForExistence(timeout: 5))
+        // Attaching canvases records routing and placement, so the panel has
+        // content even before anything is drawn.
+        XCTAssertTrue(
+            app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'routing'")).firstMatch
+                .waitForExistence(timeout: 5),
+            "The panel should already show what the input layer did on load"
+        )
+
+        debugTab.tap()
+        XCTAssertTrue(waitForDisappearance(of: app.descendants(matching: .any)["diagnosticsView"].firstMatch))
+    }
+
     func testPaletteIsHiddenInPresentationMode() {
         let app = launchDrawing(extraArguments: ["-present"])
         XCTAssertTrue(app.otherElements["pdfView"].waitForExistence(timeout: 10))

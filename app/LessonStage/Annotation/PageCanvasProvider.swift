@@ -16,6 +16,9 @@ final class PageCanvasProvider: NSObject {
     /// The document being annotated. Swapped when the tab changes.
     var drawings: DrawingSet?
 
+    /// On-screen input diagnostics. Debug builds only.
+    var diagnostics: CanvasDiagnostics?
+
     var tool: DrawingTool = .pen(.black) {
         didSet {
             guard tool != oldValue else { return }
@@ -51,7 +54,7 @@ final class PageCanvasProvider: NSObject {
     }
 
     /// Canvases currently on screen, by page index.
-    private var liveCanvases: [Int: PKCanvasView] = [:]
+    private var liveCanvases: [Int: PageCanvasView] = [:]
 
     /// The page last drawn on, so undo has something to aim at. Undo is
     /// per-canvas in PencilKit; with a canvas per page there is no single
@@ -88,11 +91,33 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
 
     func pdfView(_ pdfView: PDFView, willDisplayOverlayView overlayView: UIView, for page: PDFPage) {
         self.pdfView = pdfView
+        enableInteraction(from: overlayView, upTo: pdfView)
         applyTouchRouting()
 
         #if DEBUG
         if let canvas = overlayView as? PKCanvasView { logCanvasPlacement(canvas) }
         #endif
+    }
+
+    /// Re-enable touch delivery on the views PDFKit parents the overlay under.
+    ///
+    /// `PDFPageView` ships with `isUserInteractionEnabled = false` — PDFKit
+    /// hit-tests at the `PDFView` level and has no need for its page views to
+    /// take touches. A disabled view drops touches for its whole subtree, so
+    /// an overlay added beneath one is unreachable no matter what it or any
+    /// gesture recognizer is configured to do. That is the real reason strokes
+    /// never arrived, and it is invisible from the canvas's own state: it is
+    /// enabled, sized, visible, and never asked.
+    ///
+    /// Safe for scrolling: these views carry no recognizers of their own, and
+    /// a recognizer on an ancestor still sees touches that land on a
+    /// descendant — so PDFKit's pan continues to work for fingers.
+    private func enableInteraction(from overlayView: UIView, upTo pdfView: PDFView) {
+        var node: UIView? = overlayView
+        while let current = node, current !== pdfView {
+            if !current.isUserInteractionEnabled { current.isUserInteractionEnabled = true }
+            node = current.superview
+        }
     }
 
     /// Decide, by touch *type*, what PDFKit is allowed to react to.
@@ -126,12 +151,9 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
             recognizer.allowedTouchTypes = allowed
         }
 
-        #if DEBUG
-        Self.logger.debug("""
-            touch routing: drawing=\(self.isDrawingEnabled, privacy: .public) \
-            recognizers=\(recognizers.count, privacy: .public)
-            """)
-        #endif
+        diagnostics?.record(
+            "routing — marking \(isDrawingEnabled ? "on" : "off"), \(recognizers.count) PDF recognizers restricted"
+        )
     }
 
     /// Every gesture recognizer in the PDF's hierarchy, skipping the subtrees
@@ -170,10 +192,7 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
             """
 
         Self.logger.debug("\(message, privacy: .public)")
-        // Also to stdout: `devicectl … --console` shows stdout reliably, while
-        // whether it surfaces unified-log messages is not something to depend
-        // on when the point is to stop guessing.
-        print(message)
+        diagnostics?.record(message)
     }
     #endif
 
@@ -188,8 +207,9 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
         liveCanvases[index] = nil
     }
 
-    private func makeCanvas(forPage index: Int) -> PKCanvasView {
-        let canvas = PKCanvasView()
+    private func makeCanvas(forPage index: Int) -> PageCanvasView {
+        let canvas = PageCanvasView()
+        canvas.diagnostics = diagnostics
         canvas.tag = index
         canvas.delegate = self
         canvas.tool = tool.pkTool
@@ -210,5 +230,6 @@ extension PageCanvasProvider: PKCanvasViewDelegate {
         let index = canvasView.tag
         drawings?.update(canvasView.drawing, forPage: index)
         if !canvasView.drawing.strokes.isEmpty { lastEditedPage = index }
+        diagnostics?.record("drawing changed — page \(index), \(canvasView.drawing.strokes.count) stroke(s)")
     }
 }
