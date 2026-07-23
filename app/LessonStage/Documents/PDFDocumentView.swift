@@ -29,6 +29,7 @@ final class PDFViewHost {
         // The surround the page floats in — dark, so a projector doesn't wash
         // the page out with a bright frame around it.
         view.backgroundColor = UIColor(Color.presentationSurround)
+        view.accessibilityIdentifier = "pdfView"
 
         self.pdfView = view
     }

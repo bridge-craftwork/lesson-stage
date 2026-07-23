@@ -15,6 +15,7 @@ struct ThumbnailSidebar: UIViewRepresentable {
         view.layoutMode = .vertical
         view.thumbnailSize = CGSize(width: 108, height: 140)
         view.backgroundColor = UIColor(Color.sidebarSurface)
+        view.accessibilityIdentifier = "thumbnailSidebar"
         return view
     }
 

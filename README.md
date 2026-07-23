@@ -16,9 +16,7 @@ scroll, pinch zoom, a page thumbnail sidebar, drag-to-reorder tabs, a
 presentation mode that strips all chrome, and session restore that reopens
 last session's tabs on the page each was left on.
 
-Touch-driven interactions (tab switch, close, reorder, pinch) are implemented
-but **not yet verified** — `simctl` cannot tap, so they need a XCUITest target
-or hands on the device.
+Touch-driven interactions are covered by the `LessonStageUITests` target.
 
 Also done, early and out of order: a **working bridge popout spike**. Real
 unmodified Bridge-Classroom components (`HandDisplay`, `TrickArea`) run in a
@@ -71,6 +69,18 @@ into the app's resources:
 ```bash
 ./popout/sync-to-app.sh
 ```
+
+## Tests
+
+```bash
+xcodebuild test -project app/LessonStage.xcodeproj -scheme LessonStage \
+  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'
+```
+
+`LessonStageUITests` drives the app through real synthesized touches — the only
+way to cover tab switching, closing, drag-to-reorder, pinch zoom, and the
+popout's tap-to-play. It generates its own PDFs rather than carrying binary
+fixtures.
 
 Launching with `-popout` opens the bridge popout straight from launch, which
 is how the spike is driven without a tap.

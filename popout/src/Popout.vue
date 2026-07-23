@@ -144,8 +144,11 @@ onMounted(() => {
       <button :disabled="!played.length" @click="reset">Reset</button>
     </header>
 
+    <!-- Each seat is labelled as a group so a test (or a screen reader) can
+         address one hand. The vendored components carry no such hooks and
+         must not be edited to add them, so the wrapper supplies them. -->
     <div class="table">
-      <div class="seat north">
+      <div class="seat north" role="group" aria-label="North hand">
         <span class="label">N</span>
         <HandDisplay
           :hand="handsToShow.N"
@@ -156,7 +159,7 @@ onMounted(() => {
       </div>
 
       <div class="middle">
-        <div class="seat west">
+        <div class="seat west" role="group" aria-label="West hand">
           <span class="label">W</span>
           <HandDisplay
             :hand="handsToShow.W"
@@ -172,7 +175,7 @@ onMounted(() => {
           :next-seat="nextSeat"
         />
 
-        <div class="seat east">
+        <div class="seat east" role="group" aria-label="East hand">
           <span class="label">E</span>
           <HandDisplay
             :hand="handsToShow.E"
@@ -183,7 +186,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="seat south">
+      <div class="seat south" role="group" aria-label="South hand">
         <span class="label">S</span>
         <HandDisplay
           :hand="handsToShow.S"

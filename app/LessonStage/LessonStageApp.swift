@@ -13,6 +13,11 @@ struct LessonStageApp: App {
                 // against a light scheme that renders them dark-on-dark.
                 .preferredColorScheme(.dark)
                 .task {
+                    #if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("-reset") {
+                        session.discardSavedSession()
+                    }
+                    #endif
                     session.restore()
                     openLaunchArgumentFiles()
                 }
@@ -21,6 +26,7 @@ struct LessonStageApp: App {
 
     /// Debug launch arguments, so the app can be driven without a tap:
     ///
+    ///   -reset          discard any saved session before restoring
     ///   -open <path>…   open files directly, bypassing the document picker
     ///   -page <n>       start the active tab on 1-based page `n`
     ///   -thumbnails     open with the page sidebar showing

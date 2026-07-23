@@ -124,6 +124,18 @@ final class LessonSession {
         if restored.count != persisted.tabs.count { persist() }
     }
 
+    #if DEBUG
+    /// Throw away the saved session so a test starts from a known state.
+    /// Each UI test launches a fresh app against the same container, so
+    /// without this every test would inherit the previous one's tabs.
+    func discardSavedSession() {
+        tabs.forEach { $0.close() }
+        tabs = []
+        selectedTabID = nil
+        store.save(SessionStore.PersistedSession())
+    }
+    #endif
+
     private func persist() {
         let entries = tabs.compactMap { tab -> SessionStore.PersistedTab? in
             guard let bookmark = tab.bookmark else { return nil }

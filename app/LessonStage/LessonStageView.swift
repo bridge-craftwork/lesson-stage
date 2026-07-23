@@ -110,6 +110,7 @@ private struct ReadingControls: View {
                 Text("Page \(tab.pageIndex + 1) of \(tab.pageCount)")
                     .font(.callout.monospacedDigit())
                     .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("pageIndicator")
             }
 
             Button {

@@ -79,9 +79,21 @@ Ordered so every phase ends with something usable in the Tuesday class.
 
 **Verified on an iPad Pro 13" simulator:** rendering, thumbnails, page
 restore, presentation mode, and a full quit-and-relaunch session restore.
-**Not yet verified:** anything needing touch — tab switch, close, drag-reorder,
-pinch zoom — because `simctl` cannot tap. That needs a XCUITest target or
-hands on the device.
+
+**Touch is covered by the `LessonStageUITests` target** — 12 tests, green on
+repeated runs: tab switch, close, close-selects-neighbour, drag-to-reorder,
+pinch zoom, swipe-scroll page tracking, sidebar toggle, presentation mode, and
+the popout's tap-to-play. Run with:
+
+```bash
+xcodebuild test -project app/LessonStage.xcodeproj -scheme LessonStage \
+  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'
+```
+
+Tests generate their own PDFs rather than carrying binary fixtures; the two
+differ in page count so "Page 1 of N" proves which document is on screen.
+PDF page *text* is not dependably exposed to the accessibility tree, so it
+makes a poor assertion target — the page count is the sturdy one.
 
 **Exit:** GoodReader-parity for *viewing*. Usable in class read-only.
 

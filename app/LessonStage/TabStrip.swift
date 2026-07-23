@@ -104,6 +104,12 @@ private struct TabButton: View {
         .background(isSelected ? Color.selectedTab : Color.clear)
         .contentShape(.rect)
         .onTapGesture(perform: select)
+        // A tap gesture carries no accessibility meaning on its own: without
+        // the button trait the strip is unreachable to VoiceOver and to the
+        // UI tests, which is the same gap seen from two directions.
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("tab-\(tab.title)")
     }
 }
 

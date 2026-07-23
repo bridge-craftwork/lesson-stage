@@ -74,6 +74,10 @@ Verified running on an iPad Pro 13" simulator:
   the second trick.
 - The round trip works in both directions: JS → native `{type: "ready"}` on
   mount, native → JS `window.lessonStage.load(payload)` in response.
+- **A real tap on a card plays it** (`PopoutUITests.testTappingACardPlaysIt`).
+  This was the spike's one unverified claim; it is now covered by the UI test
+  target. Tapping East's ♠J passes the lead to South, so the touch reaches the
+  Vue component, the vendored rules accept the play, and the state advances.
 
 ### What the spike changed
 
