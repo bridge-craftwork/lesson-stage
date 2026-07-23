@@ -160,15 +160,20 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
             node = current.superview
         }
 
-        Self.logger.debug("""
-            canvas placement: policy=\(canvas.drawingPolicy.rawValue, privacy: .public) \
-            enabled=\(canvas.isUserInteractionEnabled, privacy: .public) \
-            frame=\(String(describing: canvas.frame), privacy: .public) \
-            hidden=\(canvas.isHidden, privacy: .public) \
-            alpha=\(canvas.alpha, privacy: .public) \
-            interactionBlockedBy=\(blocked ?? "none", privacy: .public) \
-            ancestry=\(ancestry.joined(separator: " < "), privacy: .public)
-            """)
+        let message = """
+            canvas placement: policy=\(canvas.drawingPolicy.rawValue) \
+            enabled=\(canvas.isUserInteractionEnabled) \
+            frame=\(canvas.frame) \
+            hidden=\(canvas.isHidden) alpha=\(canvas.alpha) \
+            interactionBlockedBy=\(blocked ?? "none") \
+            ancestry=\(ancestry.joined(separator: " < "))
+            """
+
+        Self.logger.debug("\(message, privacy: .public)")
+        // Also to stdout: `devicectl … --console` shows stdout reliably, while
+        // whether it surfaces unified-log messages is not something to depend
+        // on when the point is to stop guessing.
+        print(message)
     }
     #endif
 
