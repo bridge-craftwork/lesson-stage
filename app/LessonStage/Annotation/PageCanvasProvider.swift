@@ -387,21 +387,30 @@ extension PageCanvasProvider: CopyModeRouter {
     }
 
     func showLiveSelection(_ selection: PDFSelection?) {
-        clearLiveSelection()
-
         // Draw the live highlight in the tool's colour — the actual highlight
         // growing under the Pencil, so you can see the text you have grabbed.
-        // Rebuilt on each move; cheap enough at annotation granularity.
         guard let selection, !(selection.string ?? "").isEmpty,
               case .highlighter(let color) = tool,
               let page = selection.pages.first,
               let highlight = HighlightFactory.make(from: selection, on: page, color: color)
-        else { return }
+        else {
+            clearLiveSelection()
+            return
+        }
+
+        // Add the new annotation *before* removing the previous, so the page is
+        // never empty for a frame. Remove-then-add can flash: PDFKit may paint
+        // the removal and the addition on separate frames, showing a bare gap
+        // between. This keeps a highlight on screen throughout.
+        let previous = liveAnnotation
+        let previousPage = livePage
 
         let annotation = HighlightFactory.annotation(for: highlight)
         page.addAnnotation(annotation)
         liveAnnotation = annotation
         livePage = page
+
+        if let previous, let previousPage { previousPage.removeAnnotation(previous) }
     }
 
     func clearLiveSelection() {
