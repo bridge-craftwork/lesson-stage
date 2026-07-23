@@ -28,12 +28,19 @@ struct LessonStageView: View {
         ProcessInfo.processInfo.arguments.contains("-fastChrome") ? .milliseconds(2500) : .seconds(5)
     }
 
+    /// The shorter delay after acting on a control — you picked a tool, so the
+    /// chrome should get out of the way promptly rather than lingering the full
+    /// idle spell.
+    private var chromeQuickHide: Duration {
+        ProcessInfo.processInfo.arguments.contains("-fastChrome") ? .milliseconds(2500) : .seconds(1.5)
+    }
+
     /// Chrome is shown only when revealed and not in the explicit presentation
     /// mode. When hidden either way, the page goes edge-to-edge with the status
     /// bar tucked away — the same clean look on the projector.
     private var showChrome: Bool { chromeVisible && !session.isPresenting }
 
-    private func scheduleChromeHide() {
+    private func scheduleChromeHide(after delay: Duration? = nil) {
         hideTask?.cancel()
         // Nothing to clean up with no lesson open — the empty state keeps its
         // buttons.
@@ -41,7 +48,7 @@ struct LessonStageView: View {
         // Tests that aren't about auto-hide pin the chrome open, so an idle
         // fade cannot pull a tab or tool out from under them.
         if ProcessInfo.processInfo.arguments.contains("-noAutoHide") { return }
-        let delay = chromeIdleHide
+        let delay = delay ?? chromeIdleHide
         hideTask = Task { @MainActor in
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
@@ -88,15 +95,23 @@ struct LessonStageView: View {
             }
         }
         .sheet(isPresented: $showPopout) { PopoutSheet() }
-        .onAppear { attachDiagnostics() }
+        .onAppear {
+            attachDiagnostics()
+            pdfHost.pencilToggle.onTap = { session.toggleEraser() }
+        }
         // `initial: true` starts the idle countdown once the first lesson is
         // open, regardless of whether that happened before or after this view
         // appeared — the fixture opens in the app's launch task, which races
         // `onAppear`. Switching tabs later reveals and restarts it.
         .onChange(of: session.selectedTabID, initial: true) { _, _ in revealChrome() }
-        // Picking a tool restarts the countdown rather than letting the chrome
-        // fade mid-task.
-        .onChange(of: session.tool) { _, _ in if showChrome { scheduleChromeHide() } }
+        // Picking a tool means you're about to draw — hide the chrome promptly
+        // rather than lingering the full idle spell. Also keep the canvases'
+        // tool in sync with the session, so a Pencil double-tap that changes
+        // the tool reaches the pages too.
+        .onChange(of: session.tool) { _, _ in
+            pdfHost.canvases.tool = session.tool
+            if showChrome { scheduleChromeHide(after: chromeQuickHide) }
+        }
     }
 
     @ViewBuilder

@@ -73,8 +73,10 @@ struct DrawingPalette: View {
 
     private func toolButton(_ tool: DrawingTool) -> some View {
         Button {
+            // The canvases follow `session.tool` reactively (see the tool
+            // onChange in LessonStageView), so setting it here is enough — the
+            // same path the Pencil double-tap uses.
             session.tool = tool
-            host.canvases.tool = tool
         } label: {
             Image(systemName: tool.symbolName)
                 .foregroundStyle(tool.tint ?? .primary)

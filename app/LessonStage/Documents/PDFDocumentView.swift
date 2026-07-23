@@ -20,6 +20,10 @@ final class PDFViewHost {
     /// outlive any single `updateUIView`, and because the toolbar drives it.
     let canvases = PageCanvasProvider()
 
+    /// Receives the Apple Pencil double-tap. Its `onTap` is wired to the
+    /// session's eraser toggle once the view is up.
+    let pencilToggle = PencilToggleController()
+
     init() {
         let view = PDFView()
 
@@ -40,6 +44,13 @@ final class PDFViewHost {
         // owned here — a locally-created one is released before PDFKit asks
         // it for anything.
         view.pageOverlayViewProvider = canvases
+
+        // The Apple Pencil double-tap. The interaction is not location-based —
+        // the tap is on the pencil itself — so any view in the hierarchy will
+        // receive it; the reading surface is the natural home.
+        let pencilInteraction = UIPencilInteraction()
+        pencilInteraction.delegate = pencilToggle
+        view.addInteraction(pencilInteraction)
 
         #if DEBUG
         // The simulator has no Pencil, so `.pencilOnly` would make every

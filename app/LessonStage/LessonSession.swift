@@ -40,6 +40,22 @@ final class LessonSession {
 
     var tool: DrawingTool = .pen(.black)
 
+    /// The tool to return to when the eraser is toggled off. Only meaningful
+    /// while the eraser is the current tool.
+    private var toolBeforeEraser: DrawingTool?
+
+    /// Flip between the eraser and the last drawing tool — the Apple Pencil
+    /// double-tap. A second double-tap returns to whatever was selected before.
+    func toggleEraser() {
+        if tool == .eraser {
+            tool = toolBeforeEraser ?? .pen(.black)
+            toolBeforeEraser = nil
+        } else {
+            toolBeforeEraser = tool
+            tool = .eraser
+        }
+    }
+
     #if DEBUG
     /// The diagnostics tab, and whether it is the one showing. Debug builds
     /// only — this is a development instrument, not a feature.

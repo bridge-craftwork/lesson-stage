@@ -226,4 +226,36 @@ final class LessonSessionTests: XCTestCase {
         XCTAssertNotNil(session.tabs[0].loadFailure, "…and reports the failure")
         XCTAssertEqual(session.tabs[0].pageCount, 0)
     }
+
+    // MARK: - Eraser toggle (the Pencil double-tap)
+
+    func testToggleEraserSwitchesToEraserAndBack() {
+        let session = makeSession()
+        session.tool = .pen(.red)
+
+        session.toggleEraser()
+        XCTAssertEqual(session.tool, .eraser, "First toggle selects the eraser")
+
+        session.toggleEraser()
+        XCTAssertEqual(session.tool, .pen(.red), "Second toggle returns to the previous tool")
+    }
+
+    func testToggleEraserRemembersTheHighlighter() {
+        let session = makeSession()
+        session.tool = .highlighter(.yellow)
+
+        session.toggleEraser()
+        session.toggleEraser()
+
+        XCTAssertEqual(session.tool, .highlighter(.yellow), "It returns to whatever was selected")
+    }
+
+    func testTogglingFromEraserWithNoHistoryFallsBackToAPen() {
+        let session = makeSession()
+        session.tool = .eraser
+
+        session.toggleEraser()
+
+        XCTAssertEqual(session.tool, .pen(.black), "With nothing to return to, fall back to the black pen")
+    }
 }
