@@ -86,6 +86,12 @@ final class PageCanvasProvider: NSObject {
     /// undo stack to consult.
     private(set) var lastEditedPage: Int?
 
+    /// The highlight annotation shown while a selection is being dragged, and
+    /// the page it sits on. Removed and rebuilt on each move; the same colour
+    /// as the committed highlight, so what you drag is what you get.
+    private var liveAnnotation: PDFAnnotation?
+    private weak var livePage: PDFPage?
+
 
     func undo() {
         guard let page = lastEditedPage, let canvas = liveCanvases[page] else { return }
@@ -380,12 +386,29 @@ extension PageCanvasProvider: CopyModeRouter {
         )
     }
 
-    // No live preview: the highlight appears on release, which is correct
-    // GoodReader-parity and avoids the per-move annotation churn that a live
-    // preview needs. If a growing-under-the-Pencil preview is wanted later,
-    // it goes here — deliberately, not as the default.
-    func showLiveSelection(_ selection: PDFSelection?) {}
-    func clearLiveSelection() {}
+    func showLiveSelection(_ selection: PDFSelection?) {
+        clearLiveSelection()
+
+        // Draw the live highlight in the tool's colour — the actual highlight
+        // growing under the Pencil, so you can see the text you have grabbed.
+        // Rebuilt on each move; cheap enough at annotation granularity.
+        guard let selection, !(selection.string ?? "").isEmpty,
+              case .highlighter(let color) = tool,
+              let page = selection.pages.first,
+              let highlight = HighlightFactory.make(from: selection, on: page, color: color)
+        else { return }
+
+        let annotation = HighlightFactory.annotation(for: highlight)
+        page.addAnnotation(annotation)
+        liveAnnotation = annotation
+        livePage = page
+    }
+
+    func clearLiveSelection() {
+        if let liveAnnotation, let livePage { livePage.removeAnnotation(liveAnnotation) }
+        liveAnnotation = nil
+        livePage = nil
+    }
 
     func commitHighlight(_ selection: PDFSelection, onPage index: Int) {
         guard let page = pdfView?.document?.page(at: index),

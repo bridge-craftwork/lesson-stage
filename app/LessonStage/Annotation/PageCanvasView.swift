@@ -35,9 +35,11 @@ final class PageCanvasView: PKCanvasView {
         return convert(local, to: hostPDFView)
     }
 
-    /// The in-progress text selection, while a touch is routed to highlighting
-    /// rather than to the canvas. Non-nil means "this touch is a highlight".
+    /// The current text selection under the drag, or nil while the drag has
+    /// not yet crossed any text.
     private var activeSelection: PDFSelection?
+    /// Where the highlighter drag began. Non-nil means a selection gesture is
+    /// in progress — even before any text is under it.
     private var selectionStart: CGPoint?
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -48,8 +50,8 @@ final class PageCanvasView: PKCanvasView {
             // it. Ink is erased by the canvas's own eraser, so fall through
             // when nothing was hit.
             if eraseHighlightIfHit(at: touch) { return }
-            // Copy mode: a stroke starting on text highlights instead of inks.
-            if beginHighlightIfOnText(at: touch) { return }
+            // The highlighter claims the whole gesture as a text selection.
+            if beginSelectionIfHighlighter(at: touch) { return }
         }
         super.touchesBegan(touches, with: event)
     }
@@ -57,7 +59,7 @@ final class PageCanvasView: PKCanvasView {
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         report(touches, phase: "moved")
 
-        if activeSelection != nil, let touch = touches.first {
+        if selectionStart != nil, let touch = touches.first {
             extendSelection(to: touch)
             return
         }
@@ -65,7 +67,7 @@ final class PageCanvasView: PKCanvasView {
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if activeSelection != nil {
+        if selectionStart != nil {
             commitHighlight()
             return
         }
@@ -75,11 +77,8 @@ final class PageCanvasView: PKCanvasView {
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         report(touches, phase: "CANCELLED")
 
-        if activeSelection != nil {
-            // A cancel drops the highlight rather than committing a partial one.
-            activeSelection = nil
-            selectionStart = nil
-            router?.clearLiveSelection()
+        if selectionStart != nil {
+            endSelection()
             return
         }
         super.touchesCancelled(touches, with: event)
@@ -96,43 +95,49 @@ final class PageCanvasView: PKCanvasView {
         return hit
     }
 
-    /// Decide, once, whether this touch highlights or inks.
-    private func beginHighlightIfOnText(at touch: UITouch) -> Bool {
+    /// Claim the whole gesture for text selection whenever the highlighter is
+    /// active — no whitespace gate.
+    ///
+    /// The routing decision used to be made once, at touch-down, from whether
+    /// that exact point sat on a glyph. That made starting a hair left of the
+    /// first letter fail: the touch landed in the margin, was called ink, and
+    /// the drag onto text was ignored. GoodReader is forgiving here. So the
+    /// highlighter now selects whatever text the drag *spans*, deciding on
+    /// release, not at the start — begin just before the word and it still
+    /// grabs it. A drag that never crosses text selects nothing and commits
+    /// nothing.
+    private func beginSelectionIfHighlighter(at touch: UITouch) -> Bool {
         guard let router, router.isCopyModeActive else { return false }
 
-        let point = hostPoint(for: touch)
-        guard let initial = router.initialSelection(at: point) else {
-            diagnostics?.recordCoalesced("copy-mode — whitespace, inking")
-            return false
-        }
-
-        // PencilKit's ink is already suppressed for the highlighter tool (its
-        // drawing recognizer is disabled at tool-switch, not here — disabling
-        // mid-touch cancels the whole gesture). So the only feedback is the
-        // text selection, shown from the first character, matching GoodReader.
-        selectionStart = point
-        activeSelection = initial
-        router.showLiveSelection(initial)
-        diagnostics?.record("copy-mode — on text, selecting")
+        selectionStart = hostPoint(for: touch)
+        // Seed with the character under the start, if any, so a tap that lands
+        // on a glyph shows feedback from the first frame.
+        activeSelection = router.initialSelection(at: selectionStart!)
+        router.showLiveSelection(activeSelection)
+        diagnostics?.record("copy-mode — selecting")
         return true
     }
 
     private func extendSelection(to touch: UITouch) {
         guard let start = selectionStart else { return }
-        let point = hostPoint(for: touch)
-        activeSelection = router?.selection(from: start, to: point)
+        activeSelection = router?.selection(from: start, to: hostPoint(for: touch))
         router?.showLiveSelection(activeSelection)
     }
 
     private func commitHighlight() {
-        defer {
-            activeSelection = nil
-            selectionStart = nil
-            router?.clearLiveSelection()
+        defer { endSelection() }
+        guard let selection = activeSelection, !(selection.string ?? "").isEmpty else {
+            diagnostics?.recordCoalesced("copy-mode — no text spanned")
+            return
         }
-        guard let selection = activeSelection else { return }
         router?.commitHighlight(selection, onPage: tag)
         diagnostics?.record("highlight committed — page \(tag)")
+    }
+
+    private func endSelection() {
+        activeSelection = nil
+        selectionStart = nil
+        router?.clearLiveSelection()
     }
 
     // MARK: - Diagnostics

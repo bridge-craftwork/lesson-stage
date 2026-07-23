@@ -123,18 +123,18 @@ final class DrawingUITests: LessonStageUITestCase {
         XCTAssertTrue(expect(marks, toRead: "1"), "Dragging over text should leave a highlight")
     }
 
-    /// The other half of the routing decision, read from the diagnostics panel
-    /// rather than inferred from a mark count. A drag low on the page — well
-    /// below any text in the fixture — must be routed to ink, not highlight.
-    /// Reading the recorded decision makes this robust to where exactly the
-    /// glyphs fell, which a mark count is not.
-    func testDraggingBlankSpaceRoutesToInk() {
+    /// A drag that never crosses any text commits no highlight. Read from the
+    /// diagnostics panel — a mark count cannot tell "nothing spanned" from "the
+    /// glyphs fell elsewhere".
+    func testDraggingBlankSpaceHighlightsNothing() {
         let app = launchDrawing()
         app.buttons["tool-Yellow highlighter"].tap()
-        XCTAssertTrue(annotatedPages(in: app).waitForExistence(timeout: 10))
+        let marks = annotatedPages(in: app)
+        XCTAssertTrue(marks.waitForExistence(timeout: 10))
 
+        // Low on the page, below all text in the fixture.
         let page = app.otherElements["pdfView"]
-        page.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9))
+        page.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.9))
             .press(
                 forDuration: 0.2,
                 thenDragTo: page.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.9)),
@@ -144,9 +144,34 @@ final class DrawingUITests: LessonStageUITestCase {
 
         app.descendants(matching: .any)["tab-diagnostics"].firstMatch.tap()
         XCTAssertTrue(
-            app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'whitespace, inking'"))
+            app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'no text spanned'"))
                 .firstMatch.waitForExistence(timeout: 5),
-            "A drag starting on blank space should be routed to ink, not highlighting"
+            "A drag over blank space should span no text and commit no highlight"
+        )
+    }
+
+    /// The forgiving-start behaviour: begin in the left margin, drag onto text,
+    /// and the text is still highlighted. This is what starting a hair before a
+    /// word must do — the case that used to fail.
+    func testHighlightStartingInTheMarginStillGrabsText() {
+        let app = launchDrawing()
+        app.buttons["tool-Yellow highlighter"].tap()
+        let marks = annotatedPages(in: app)
+        XCTAssertTrue(marks.waitForExistence(timeout: 10))
+
+        // Start left of the first glyph of a body line, drag across the line.
+        let page = app.otherElements["pdfView"]
+        page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.27))
+            .press(
+                forDuration: 0.2,
+                thenDragTo: page.coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0.27)),
+                withVelocity: .slow,
+                thenHoldForDuration: 0.2
+            )
+
+        XCTAssertTrue(
+            expect(marks, toRead: "1"),
+            "Starting in the margin and dragging onto text should still highlight it"
         )
     }
 
