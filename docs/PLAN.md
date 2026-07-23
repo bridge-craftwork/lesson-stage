@@ -130,44 +130,61 @@ from synthesized touches, confirmed by instrumenting a running build. Those
 three tests are written and skip on the simulator; they run on a paired iPad,
 where `-fingerDrawing` lets a finger draw.
 
-**2b — Copy mode (the GoodReader gesture). Mechanism built; feel iteration
-pending on device.** Each stroke is routed at touch-down in
-`PageCanvasView.touchesBegan`: hit-test the point against the page's text
-layout — on a character, run a PDFKit selection and commit a `.highlight`
-annotation from the selection's per-line bounds; on whitespace, fall through
-to the PencilKit canvas as ink. Highlights persist in the same content-hash
-sidecar as the ink (never touching the source PDF), and the eraser removes a
-highlight under a tap as well as ink.
+**2b — Copy mode (the GoodReader gesture). Built and confirmed on device.**
+With the highlighter selected, a drag selects whatever text it spans and
+commits a `.highlight` on release; the selection is previewed live in the
+tool's colour as it grows. A drag that crosses no text does nothing. Highlights
+persist in the same content-hash sidecar as the ink (never touching the source
+PDF), the eraser removes a highlight under a tap, undo steps back through ink
+and highlights together, and "clear all marks" wipes everything in one
+undoable step. Plus a colour picker's worth of pen colours; a *highlight*
+colour picker is the one deferred nicety (the model already carries the
+colour).
 
-Two findings, both from running it on the simulator with the diagnostics tab:
+This was the hardest part of the app so far — not in volume of code but in the
+number of PDFKit behaviours that are invisible to the simulator and only
+surface on a device. Recorded here because every one cost a device round-trip
+and would cost another if forgotten:
 
+- **`PDFPageView` ships with `isUserInteractionEnabled = false`.** PDFKit
+  hit-tests at the `PDFView` level, so it disables its page views — and a
+  disabled view drops touches for its whole subtree, so the overlay canvas
+  never saw a touch. Interaction is re-enabled on the ancestors up to the
+  `PDFView`. This is why the Pencil did nothing at first.
 - **`PDFPage.characterIndex(at:)` returns the *nearest* glyph, not −1 off
-  text** — so it reports "on text" everywhere, margins included, which would
-  make inking in copy mode impossible. The real test is whether that
-  character's `characterBounds(at:)` actually contains the point. That is the
-  whole routing decision and it was silently wrong until the on-screen
-  diagnostics showed a margin drag reporting "on text".
-- **Points must be converted through `PDFView`, not assumed to be page space.**
-  The canvas overlay is UIKit (top-left); a PDF page is bottom-left. Routing
-  the touch through `pdfView.convert(_:to: page)` is what keeps the hit-test
-  where the finger is.
+  text.** It reports "on text" everywhere, margins included. The real test is
+  whether that character's `characterBounds(at:)` contains the point.
+- **`quadrilateralPoints` are bounds-origin-relative, not page space** —
+  despite the SDK header saying "page space." Absolute coordinates offset every
+  highlight up and to the right, worse for larger selections.
+- **Points must be converted through `PDFView`** (`convert(_:to: page)`): the
+  canvas overlay is UIKit top-left, a PDF page is bottom-left.
+- **The live preview saturates the main thread.** A normal drag fires hundreds
+  of coalesced move events; rebuilding the preview annotation on each starves
+  the render pass, so nothing paints until release. Throttled to one rebuild
+  per frame, with the final span always applied unthrottled on release.
+- **Remove-then-add flickers.** PDFKit can paint the removal and the addition
+  on separate frames. Add the new annotation before removing the old.
+- **Ink is disabled for the highlighter**, so it is a pure text tool: a Pencil
+  on whitespace does nothing, a finger still scrolls. (Under `-fingerDrawing`
+  the tests keep ink on so a test finger can reach the canvas past the
+  fingers-only scroll pan; that path leaves a stray marker, so the erase-tap
+  and undo-highlight UI tests are device-only.)
 
-**Still to iterate (the plan always had this as the open-ended half):**
-- **Selection geometry.** `document.selection(from:at:to:at:)` selects the
-  text *flow* between two points, so a drag along one line can catch the next.
-  GoodReader feels like it highlights what the swipe passed over. Tuning this
-  — and rotated pages, two-column lessons, selection ends — is device-and-
-  Pencil work.
-- A colour picker for highlights (the model already carries a colour).
+The diagnostics tab (a debug-only tab showing touch routing and canvas
+placement, with a Copy button) is what made this tractable — it put on the
+glass the facts a simulator could not. Worth keeping.
 
-**Verification.** The routing decision, the highlight lifecycle (commit →
-render → persist → reload), and remove-by-point are covered — 49 unit tests
-and simulator-reachable UI tests, since the highlight path is our own touch
-handling plus PDFKit selection, *not* PencilKit's stroke builder. Only the
-touch-precise erase-tap and ink strokes need a device (4 skipped tests).
+**Verification.** Routing (span text vs nothing, forgiving margin start), the
+highlight lifecycle (commit → render → persist → reload), de-overlap geometry,
+remove-by-point, and clear-all-then-undo are covered — the highlight path is
+our own touch handling plus PDFKit selection, *not* PencilKit's stroke builder,
+so it runs under synthesized touches. Only ink strokes and the touch-precise
+erase/undo taps need a device (5 skipped tests).
 
 **Exit:** GoodReader-parity for the annotation workflow actually used in
-class. GoodReader retired for ordinary lessons.
+class. GoodReader retired for ordinary lessons. **Met** — 2a and 2b both
+confirmed on device.
 
 ### Phase 3 — Contract 5 consumer (1 week)
 

@@ -19,8 +19,9 @@ sidecar keyed by the PDF's content hash — the original file is never modified,
 and marks survive a rename or re-download. A finger still scrolls and zooms
 while the Pencil draws.
 
-Copy-mode *feel* (how much a swipe selects, two-column pages) is still being
-tuned on a device; the mechanism and routing are complete.
+Copy mode is confirmed on device: a drag selects the text it spans with a live
+preview, forgiving of where it starts. Undo covers ink and highlights together,
+and "clear all marks" wipes everything in one undoable step.
 
 **Phase 1 — PDF presentation shell.** Tabbed PDF viewing with continuous
 scroll, pinch zoom, a page thumbnail sidebar, drag-to-reorder tabs, a
