@@ -77,10 +77,20 @@ xcodebuild test -project app/LessonStage.xcodeproj -scheme LessonStage \
   -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'
 ```
 
-`LessonStageUITests` drives the app through real synthesized touches — the only
-way to cover tab switching, closing, drag-to-reorder, pinch zoom, and the
-popout's tap-to-play. It generates its own PDFs rather than carrying binary
-fixtures.
+Two test targets, split by what they can reach:
+
+- **`LessonStageTests`** — 22 unit tests over the tab-management rules and
+  session persistence. Runs in under a fifth of a second, so it is the one to
+  run constantly. Add to it by default.
+- **`LessonStageUITests`** — 12 tests driving the app through real synthesized
+  touches: the only way to cover tab switching, closing, drag-to-reorder,
+  pinch zoom, and the popout's tap-to-play. ~90 seconds.
+
+Either can be run alone with `-only-testing:LessonStageTests`. Both generate
+their own PDFs rather than carrying binary fixtures.
+
+On a paired iPad, swap the destination for
+`-destination 'platform=iOS,name=<device name>'`.
 
 Launching with `-popout` opens the bridge popout straight from launch, which
 is how the spike is driven without a tap.

@@ -9,7 +9,23 @@ import Observation
 @Observable
 final class LessonSession {
     private(set) var tabs: [LessonTab] = []
-    var selectedTabID: LessonTab.ID?
+
+    /// Which tab is showing.
+    ///
+    /// Persisted on change: switching tabs is a session edit like any other,
+    /// and without this the app reopens on whichever tab happened to be
+    /// selected the last time something *else* triggered a save.
+    var selectedTabID: LessonTab.ID? {
+        didSet {
+            guard selectedTabID != oldValue, !isRestoring else { return }
+            persist()
+        }
+    }
+
+    /// Suppresses persistence while `restore` is rebuilding state, so the
+    /// restore does not write its own half-built result back over the file it
+    /// is still reading from.
+    private var isRestoring = false
 
     /// Chrome hidden for projection. Survives tab switches, not launches —
     /// starting up in presentation mode with no way back would be a trap.
@@ -112,10 +128,12 @@ final class LessonSession {
             restored.append(tab)
         }
 
+        isRestoring = true
         tabs = restored
         selectedTabID = persisted.selectedID.flatMap { id in
             restored.contains(where: { $0.id == id }) ? id : nil
         } ?? restored.first?.id
+        isRestoring = false
 
         // Only the visible tab parses now; the rest load when selected.
         selectedTab?.load()

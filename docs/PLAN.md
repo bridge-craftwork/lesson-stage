@@ -80,10 +80,12 @@ Ordered so every phase ends with something usable in the Tuesday class.
 **Verified on an iPad Pro 13" simulator:** rendering, thumbnails, page
 restore, presentation mode, and a full quit-and-relaunch session restore.
 
-**Touch is covered by the `LessonStageUITests` target** — 12 tests, green on
-repeated runs: tab switch, close, close-selects-neighbour, drag-to-reorder,
-pinch zoom, swipe-scroll page tracking, sidebar toggle, presentation mode, and
-the popout's tap-to-play. Run with:
+**Covered by tests** — 34 in total, split by what each kind can reach:
+`LessonStageTests` (22, ~0.15s) over tab-management rules and session
+persistence; `LessonStageUITests` (12, ~90s) over everything needing real
+touch — tab switch, close, close-selects-neighbour, drag-to-reorder, pinch
+zoom, swipe-scroll page tracking, sidebar toggle, presentation mode, and the
+popout's tap-to-play. Run with:
 
 ```bash
 xcodebuild test -project app/LessonStage.xcodeproj -scheme LessonStage \
