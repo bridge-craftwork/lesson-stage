@@ -21,7 +21,11 @@ enum DrawingTool: Equatable, Hashable, CaseIterable {
     var pkTool: PKTool {
         switch self {
         case .pen(let color):
-            PKInkingTool(.pen, color: color.uiColor, width: 3)
+            // 4.5, up from 3, so a hard press lands ~50% thicker. PencilKit
+            // scales the whole force range off this single width — there is no
+            // separate max — so the light end comes up too, just less
+            // noticeably. Tune here if the thin end feels heavy.
+            PKInkingTool(.pen, color: color.uiColor, width: 4.5)
         case .highlighter(let color):
             // Marker ink is translucent by design, so lesson text stays
             // readable under a highlight.
