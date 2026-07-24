@@ -61,6 +61,30 @@ final class PDFViewHost {
         }
         #endif
     }
+
+    /// Rotate the page currently showing 90° counter-clockwise.
+    ///
+    /// The rotation lives on the in-memory `PDFPage`, so it holds for the life
+    /// of the open document (and across tab switches, since each tab keeps its
+    /// document object). Highlights are PDF annotations in page space and turn
+    /// with the page; the PencilKit overlay is re-laid out by PDFKit.
+    func rotateCurrentPageCounterclockwise() {
+        guard let page = pdfView.currentPage else { return }
+        page.rotation = PageRotation.counterclockwise(from: page.rotation)
+        // Nudge PDFKit to reflow the strip at the page's new dimensions.
+        pdfView.layoutDocumentView()
+    }
+}
+
+/// The arithmetic of a 90° page turn, split out so it can be tested without a
+/// live `PDFView`.
+enum PageRotation {
+    /// PDFKit measures rotation clockwise in degrees (0/90/180/270). This
+    /// returns the value 90° counter-clockwise of `current`, normalised to
+    /// `[0, 360)`.
+    static func counterclockwise(from current: Int) -> Int {
+        ((current - 90) % 360 + 360) % 360
+    }
 }
 
 /// The reading surface for one tab.

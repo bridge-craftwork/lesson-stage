@@ -56,6 +56,30 @@ final class ReadingSurfaceUITests: LessonStageUITestCase {
         XCTAssertTrue(waitForDisappearance(of: sidebar))
     }
 
+    func testRotatePageButtonIsAvailableAndStable() {
+        let app = launchWithFixtures()
+        let pdf = app.otherElements["pdfView"]
+        XCTAssertTrue(pdf.waitForExistence(timeout: 10))
+
+        // The page rotation is on the in-memory PDFPage and is not exposed to
+        // the accessibility tree, so a UI test cannot read the angle. What it
+        // can prove: the ribbon button exists, tapping it (a full turn) leaves
+        // the reader working rather than crashing or wedging. The visual result
+        // is a device check.
+        let rotate = app.buttons["rotatePage"]
+        XCTAssertTrue(rotate.waitForExistence(timeout: 5))
+
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "rotate-ribbon"
+        shot.lifetime = .keepAlways
+        add(shot)
+
+        for _ in 0..<4 { rotate.tap() }
+
+        XCTAssertTrue(pdf.exists)
+        XCTAssertTrue(app.staticTexts["pageIndicator"].exists, "The reader survives a full rotation")
+    }
+
     func testPresentationModeHidesAndRestoresChrome() {
         let app = launchWithFixtures()
         XCTAssertTrue(tab("lesson-a").waitForExistence(timeout: 10))

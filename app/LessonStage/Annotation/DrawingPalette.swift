@@ -18,6 +18,18 @@ struct DrawingPalette: View {
             .accessibilityLabel("Pencil marks the page")
             .accessibilityIdentifier("drawToggle")
 
+            Divider().frame(height: 22)
+
+            // A view operation, not a marking one, so it stays available even
+            // when the Pencil is set to scroll rather than mark.
+            Button {
+                host.rotateCurrentPageCounterclockwise()
+            } label: {
+                Image(systemName: "rotate.left")
+            }
+            .accessibilityLabel("Rotate page counterclockwise")
+            .accessibilityIdentifier("rotatePage")
+
             if session.isDrawingEnabled {
                 Divider().frame(height: 22)
 
