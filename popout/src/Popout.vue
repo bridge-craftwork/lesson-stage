@@ -12,18 +12,50 @@ import {
 } from './vendor/utils/cardplayRules.js'
 import { RANK_ORDER, SUIT_ORDER } from './vendor/utils/cardFormatting.js'
 import { DEMO_DEAL } from './deal.js'
+import { parsePBN } from './pbnParser.js'
 
 const SEATS = ['N', 'E', 'S', 'W']
 const SUIT_KEY = { S: 'spades', H: 'hearts', D: 'diamonds', C: 'clubs' }
 
 const deal = ref(DEMO_DEAL)
+/** What kind of block was tapped — hand / auction / response-box. */
+const kind = ref(null)
+
+function handCardCount(hand) {
+  if (!hand) return 0
+  return SUIT_ORDER.reduce((n, suit) => n + (hand[suit]?.length || 0), 0)
+}
+
+function isPlayableContract(contract) {
+  return !!contract && /^\d([CDHSN])T?(X{0,2})$/.test(contract)
+}
+
+// Card play only makes sense with all four hands and a real contract. A lesson
+// hand is usually one seat, so most tapped blocks are display-only.
+const isComplete = computed(
+  () => SEATS.every((seat) => handCardCount(deal.value.hands?.[seat]) === 13)
+    && isPlayableContract(deal.value.contract)
+)
+
+const kindLabel = computed(() => {
+  const labels = { hand: 'Hand', auction: 'Auction', 'response-box': 'Responses' }
+  return labels[kind.value] || (kind.value ? kind.value : 'Deal')
+})
+
+const headerLabel = computed(() => {
+  const board = deal.value.board ? ` — Board ${deal.value.board}` : ''
+  return `${kindLabel.value}${board}`
+})
 
 // The whole of play state: an ordered list of plays. Everything else is
 // derived from it, which is what makes stepping back a truncation rather
 // than an undo stack.
 const played = ref([])
 
-const trump = computed(() => trumpFromContract(deal.value.contract))
+// Only a playable contract has a trump strain; guarding here keeps
+// `trumpFromContract` (which throws on "?") off the render path for a
+// display-only deal.
+const trump = computed(() => (isComplete.value ? trumpFromContract(deal.value.contract) : null))
 
 /** Group the flat play list into tricks, threading each winner into the next leader. */
 const tricks = computed(() => {
@@ -70,7 +102,11 @@ function cardsToHand(cards) {
 
 const handsToShow = computed(() => {
   const out = {}
-  for (const seat of SEATS) out[seat] = cardsToHand(remaining.value[seat])
+  for (const seat of SEATS) {
+    const cards = remaining.value[seat]
+    // An unspecified seat (partial deal) renders as nothing, not an empty grid.
+    out[seat] = cards.length ? cardsToHand(cards) : null
+  }
   return out
 })
 
@@ -112,8 +148,20 @@ const seam = ref('waiting for native…')
 
 /** Called by native via evaluateJavaScript. */
 function load(payload) {
-  if (payload?.deal) deal.value = payload.deal
-  played.value = payload?.plays ?? []
+  kind.value = payload?.kind ?? null
+
+  // Real lessons arrive as PBN; the spike fixture still sends a pre-built deal.
+  const parsed = payload?.pbn ? parsePBN(payload.pbn) : null
+  if (parsed) {
+    deal.value = parsed
+    played.value = []
+  } else if (payload?.deal) {
+    deal.value = payload.deal
+    played.value = payload?.plays ?? []
+  } else {
+    played.value = payload?.plays ?? []
+  }
+
   status.value = ''
   seam.value = `received ${payload?.kind ?? 'payload'} from native`
 }
@@ -134,14 +182,18 @@ onMounted(() => {
 <template>
   <div class="popout">
     <header>
-      <span class="contract">{{ deal.contract }} by {{ deal.declarer }}</span>
-      <span class="dim">
-        {{ tricks.completedTricks.length }}
-        {{ tricks.completedTricks.length === 1 ? 'trick' : 'tricks' }} played
-      </span>
-      <span class="spacer" />
-      <button :disabled="!played.length" @click="backATrick">Back a trick</button>
-      <button :disabled="!played.length" @click="reset">Reset</button>
+      <span class="contract" v-if="isComplete">{{ deal.contract }} by {{ deal.declarer }}</span>
+      <span class="contract" v-else>{{ headerLabel }}</span>
+      <template v-if="isComplete">
+        <span class="dim">
+          {{ tricks.completedTricks.length }}
+          {{ tricks.completedTricks.length === 1 ? 'trick' : 'tricks' }} played
+        </span>
+        <span class="spacer" />
+        <button :disabled="!played.length" @click="backATrick">Back a trick</button>
+        <button :disabled="!played.length" @click="reset">Reset</button>
+      </template>
+      <span v-else class="spacer" />
     </header>
 
     <!-- Each seat is labelled as a group so a test (or a screen reader) can
@@ -153,7 +205,7 @@ onMounted(() => {
         <HandDisplay
           :hand="handsToShow.N"
           show-hcp
-          :clickable="nextSeat === 'N'"
+          :clickable="isComplete && nextSeat === 'N'"
           @card-click="play('N', $event)"
         />
       </div>
@@ -164,23 +216,27 @@ onMounted(() => {
           <HandDisplay
             :hand="handsToShow.W"
             show-hcp
-            :clickable="nextSeat === 'W'"
+            :clickable="isComplete && nextSeat === 'W'"
             @card-click="play('W', $event)"
           />
         </div>
 
         <TrickArea
+          v-if="isComplete"
           :current-trick="tricks.currentTrick"
           :tricks-taken="tricksTaken"
           :next-seat="nextSeat"
         />
+        <div v-else class="center-note">
+          <span v-if="deal.dealer">Dealer {{ deal.dealer }}</span>
+        </div>
 
         <div class="seat east" role="group" aria-label="East hand">
           <span class="label">E</span>
           <HandDisplay
             :hand="handsToShow.E"
             show-hcp
-            :clickable="nextSeat === 'E'"
+            :clickable="isComplete && nextSeat === 'E'"
             @card-click="play('E', $event)"
           />
         </div>
@@ -191,14 +247,14 @@ onMounted(() => {
         <HandDisplay
           :hand="handsToShow.S"
           show-hcp
-          :clickable="nextSeat === 'S'"
+          :clickable="isComplete && nextSeat === 'S'"
           @card-click="play('S', $event)"
         />
       </div>
     </div>
 
     <footer :class="{ warn: !!status }">
-      <span>{{ status || `${nextSeat} to play — tap a card` }}</span>
+      <span>{{ status || (isComplete ? `${nextSeat} to play — tap a card` : `${kindLabel} — display only`) }}</span>
       <span class="spacer" />
       <span class="seam">{{ seam }}</span>
     </footer>
@@ -261,6 +317,15 @@ button:disabled {
   align-items: center;
   justify-content: center;
   gap: 28px;
+}
+
+.center-note {
+  min-width: 120px;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--popout-dim);
 }
 
 .seat {
