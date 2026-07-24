@@ -10,16 +10,22 @@ import {
   trickWinner,
   trumpFromContract,
 } from './vendor/utils/cardplayRules.js'
-import { RANK_ORDER, SUIT_ORDER } from './vendor/utils/cardFormatting.js'
+import { RANK_ORDER, SUIT_ORDER, colorizeSuits, normalizeSuitShorthand } from './vendor/utils/cardFormatting.js'
 import { DEMO_DEAL } from './deal.js'
 import { parsePBN } from './pbnParser.js'
 
 const SEATS = ['N', 'E', 'S', 'W']
 const SUIT_KEY = { S: 'spades', H: 'hearts', D: 'diamonds', C: 'clubs' }
 
+// A deal with no hands — what a block that binds no deal (a null-deal auction, a
+// response box) resets to, so a warm popout never shows the previous block's hand.
+const EMPTY_DEAL = { contract: null, declarer: null, openingLeader: null, hands: { N: null, E: null, S: null, W: null } }
+
 const deal = ref(DEMO_DEAL)
 /** What kind of block was tapped — hand / auction / response-box. */
 const kind = ref(null)
+/** The block's source text (the lesson DSL), shown for non-hand blocks. */
+const blockBody = ref('')
 
 function handCardCount(hand) {
   if (!hand) return 0
@@ -46,6 +52,48 @@ const headerLabel = computed(() => {
   const board = deal.value.board ? ` — Board ${deal.value.board}` : ''
   return `${kindLabel.value}${board}`
 })
+
+const hasAnyHand = computed(() => SEATS.some((seat) => handCardCount(deal.value.hands?.[seat]) > 0))
+
+// A block shows the deal table when it's a full playable deal (card play) or a
+// hand block with cards to show; anything else (an auction, a response box)
+// shows its body text instead. This is what makes each kind read differently.
+const showDeal = computed(() => isComplete.value || (kind.value === 'hand' && hasAnyHand.value))
+
+// ---- Block body (auctions, response boxes) --------------------------------
+// A stopgap render of the lesson DSL: strip the leading `key: value` config,
+// keep the content (bidding grid, response table, footnotes) in a monospace
+// block so its columns line up, with suit shorthand turned into coloured
+// symbols. A structured auction/table view is a later refinement.
+
+function parseBody(body) {
+  const lines = (body || '').split('\n')
+  const config = {}
+  let i = 0
+  while (i < lines.length && /^[a-z][\w-]*:\s/i.test(lines[i]) && !lines[i].includes('|')) {
+    const colon = lines[i].indexOf(':')
+    config[lines[i].slice(0, colon).trim().toLowerCase()] = lines[i].slice(colon + 1).trim()
+    i++
+  }
+  return { config, content: lines.slice(i).join('\n').trim() }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+const parsedBody = computed(() => parseBody(blockBody.value))
+
+const bodySubhead = computed(() => {
+  const config = parsedBody.value.config
+  if (config.title) return normalizeSuitShorthand(config.title)
+  if (config.dealer) return `Dealer ${config.dealer.toUpperCase()}`
+  return ''
+})
+
+const bodyHtml = computed(() =>
+  colorizeSuits(normalizeSuitShorthand(escapeHtml(parsedBody.value.content)))
+)
 
 // The whole of play state: an ordered list of plays. Everything else is
 // derived from it, which is what makes stepping back a truncation rather
@@ -149,8 +197,9 @@ const seam = ref('waiting for native…')
 /** Called by native via evaluateJavaScript. */
 function load(payload) {
   kind.value = payload?.kind ?? null
+  blockBody.value = payload?.blockBody ?? ''
 
-  // Real lessons arrive as PBN; the spike fixture still sends a pre-built deal.
+  // Real lessons arrive as PBN; the spike fixture sends `plays` over DEMO_DEAL.
   const parsed = payload?.pbn ? parsePBN(payload.pbn) : null
   if (parsed) {
     deal.value = parsed
@@ -158,8 +207,14 @@ function load(payload) {
   } else if (payload?.deal) {
     deal.value = payload.deal
     played.value = payload?.plays ?? []
+  } else if (payload?.plays) {
+    // Spike card-play fixture: keep whatever deal is loaded (DEMO_DEAL cold).
+    played.value = payload.plays
   } else {
-    played.value = payload?.plays ?? []
+    // A block with no deal bound — reset so a warm popout can't show the last
+    // block's hand behind an auction or a response box.
+    deal.value = EMPTY_DEAL
+    played.value = []
   }
 
   status.value = ''
@@ -196,10 +251,16 @@ onMounted(() => {
       <span v-else class="spacer" />
     </header>
 
+    <!-- Non-hand blocks (auctions, response boxes) render their source text. -->
+    <div v-if="!showDeal" class="body">
+      <div v-if="bodySubhead" class="body-subhead" v-html="bodySubhead" />
+      <pre class="body-content" v-html="bodyHtml" />
+    </div>
+
     <!-- Each seat is labelled as a group so a test (or a screen reader) can
          address one hand. The vendored components carry no such hooks and
          must not be edited to add them, so the wrapper supplies them. -->
-    <div class="table">
+    <div v-else class="table">
       <div class="seat north" role="group" aria-label="North hand">
         <span class="label">N</span>
         <HandDisplay
@@ -327,6 +388,31 @@ button:disabled {
   justify-content: center;
   color: var(--popout-dim);
 }
+
+.body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px;
+}
+
+.body-subhead {
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.body-content {
+  margin: 0;
+  font-family: 'SF Mono', ui-monospace, Menlo, monospace;
+  font-size: 18px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--popout-fg);
+}
+
+.body-content :deep(.suit-red) { color: #d32f2f; }
+.body-content :deep(.suit-black) { color: #1a1a1a; }
 
 .seat {
   display: flex;
