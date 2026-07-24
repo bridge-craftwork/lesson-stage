@@ -52,4 +52,33 @@ struct LessonPayload {
         files.first { $0.relationship == relationship && $0.filename == filename }?.data
             ?? files.first { $0.filename == filename }?.data
     }
+
+    // MARK: - Resolving a tapped block
+
+    /// One tapped block, joined to its deal — the payload that crosses to the
+    /// popout. Everything here is plain values; the seam carries JSON only.
+    struct ResolvedBlock: Equatable {
+        let index: Int
+        let kind: String
+        let body: String
+        /// The single board's PBN record this block joins to, or nil for a block
+        /// with no deal bound (an auction with `deal: null`, a response box).
+        let pbn: String?
+
+        /// The JSON payload posted to the popout: `{ kind, blockBody, pbn }`,
+        /// plus the index for debugging.
+        var message: [String: Any] {
+            var message: [String: Any] = ["kind": kind, "blockBody": body, "index": index]
+            if let pbn { message["pbn"] = pbn }
+            return message
+        }
+    }
+
+    /// Resolve a block by its click-map index: its kind and body, and the PBN
+    /// record for whatever board it joins to. Nil if the index is unknown.
+    func resolve(index: Int) -> ResolvedBlock? {
+        guard let block = map.blocks.first(where: { $0.index == index }) else { return nil }
+        let record = block.boardNumber.flatMap { board in pbn.flatMap { PBN.record(board: board, in: $0) } }
+        return ResolvedBlock(index: index, kind: block.kind, body: block.body, pbn: record)
+    }
 }

@@ -96,6 +96,8 @@ struct PDFDocumentView: UIViewRepresentable {
     let tab: LessonTab
     /// Reports the page the reader is actually on, for session restore.
     var onPageChange: (Int) -> Void
+    /// A tap that landed on a `lesson-block:` target, by its block index.
+    var onBlockTap: (Int) -> Void = { _ in }
 
     func makeUIView(context: Context) -> PDFView {
         context.coordinator.observe(host.pdfView)
@@ -104,6 +106,7 @@ struct PDFDocumentView: UIViewRepresentable {
 
     func updateUIView(_ view: PDFView, context: Context) {
         context.coordinator.onPageChange = onPageChange
+        context.coordinator.onBlockTap = onBlockTap
 
         // Swapping tabs reuses this view, so the document may be new. Compare
         // by tab rather than by document: two tabs could be the same file, and
@@ -149,10 +152,11 @@ struct PDFDocumentView: UIViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator {
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         static let logger = Logger(subsystem: "com.popperbiz.LessonStage", category: "pdf")
 
         var onPageChange: (Int) -> Void
+        var onBlockTap: (Int) -> Void = { _ in }
         var currentTabID: LessonTab.ID?
         private var isRestoring = false
         private var observer: (any NSObjectProtocol)?
@@ -172,6 +176,37 @@ struct PDFDocumentView: UIViewRepresentable {
                     self?.pageChanged(note)
                 }
             }
+
+            // Detect taps on lesson-block link annotations. Runs alongside
+            // PDFKit's own scroll/zoom/selection and the canvas drawing, rather
+            // than instead of them — hence the simultaneous delegate.
+            let tap = UITapGestureRecognizer(target: self, action: #selector(handleBlockTap(_:)))
+            tap.delegate = self
+            view.addGestureRecognizer(tap)
+        }
+
+        @objc private func handleBlockTap(_ recognizer: UITapGestureRecognizer) {
+            guard recognizer.state == .ended, let view = recognizer.view as? PDFView else { return }
+            let viewPoint = recognizer.location(in: view)
+            guard let page = view.page(for: viewPoint, nearest: true) else { return }
+            let pagePoint = view.convert(viewPoint, to: page)
+
+            // Find a lesson-block link under the point. Scanning all annotations
+            // rather than `annotation(at:)` skips the x-ray's own square/label
+            // overlays, which sit on top but carry no lesson-block action.
+            let hit = page.annotations.first {
+                $0.bounds.contains(pagePoint) && LessonBlockLinks.blockIndex(of: $0) != nil
+            }
+            if let hit, let index = LessonBlockLinks.blockIndex(of: hit) {
+                onBlockTap(index)
+            }
+        }
+
+        nonisolated func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+        ) -> Bool {
+            true
         }
 
         func beginRestoring() { isRestoring = true }

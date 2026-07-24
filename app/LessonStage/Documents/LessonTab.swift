@@ -31,6 +31,11 @@ final class LessonTab: Identifiable {
     /// document has been read, since the sidecar is keyed by content hash.
     private(set) var drawings: DrawingSet?
 
+    /// The Contract 5 payload — the click map and PBN — parsed once when the
+    /// document loads, off the main thread. `nil` for a plain PDF (no
+    /// attachments) or an unsupported payload version.
+    private(set) var payload: LessonPayload?
+
     /// `nonisolated` so `deinit` — which cannot hop to the main actor — can
     /// still release a leaked claim. Only ever mutated on the main actor, by
     /// `load` and `releaseAccess`.
@@ -93,6 +98,7 @@ final class LessonTab: Identifiable {
     private struct Loaded: @unchecked Sendable {
         let document: PDFDocument?
         let hash: String?
+        let payload: LessonPayload?
     }
 
     private static func parse(url: URL) async -> Loaded {
@@ -103,7 +109,10 @@ final class LessonTab: Identifiable {
         return await Task.detached(priority: .userInitiated) {
             let document = PDFDocument(url: url)
             let hash = document == nil ? nil : ContentHash.sha256(of: url)
-            return Loaded(document: document, hash: hash)
+            // Parse the Contract 5 payload here too, off the main thread — the
+            // CGPDF attachment walk and JSON decode should not block the UI.
+            let payload = document.flatMap { LessonPayload.load(from: $0) }
+            return Loaded(document: document, hash: hash, payload: payload)
         }.value
     }
 
@@ -143,6 +152,7 @@ final class LessonTab: Identifiable {
         if let hash = loaded.hash {
             drawings = DrawingSet(contentHash: hash)
         }
+        payload = loaded.payload
     }
 
     /// Release the file. Called when the tab closes.

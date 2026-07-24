@@ -29,11 +29,25 @@ final class PopoutWebViewHost: NSObject {
 
     private var hasLoaded = false
 
+    /// True once Vue has mounted and `window.lessonStage.load` exists. Posting
+    /// before this is a no-op in the page, so a payload sent early is held in
+    /// `pendingPayload` and flushed on `ready`.
+    private var isReady = false
+    private var pendingPayload: [String: Any]?
+
     /// Load once; subsequent presentations reuse the live document.
     func loadIfNeeded() {
         guard !hasLoaded else { return }
         hasLoaded = true
         webView.load(URLRequest(url: PopoutSchemeHandler.entryURL))
+    }
+
+    /// Present a payload: post it now if the page is ready, else hold it until
+    /// `ready` fires. The caller shows the sheet separately.
+    func show(_ payload: [String: Any]) {
+        loadIfNeeded()
+        pendingPayload = payload
+        if isReady { post(payload) }
     }
 
     /// Native → JS. Phase 3 supplies `blockBody` and `pbn` from the PDF's
@@ -61,8 +75,10 @@ extension PopoutWebViewHost: WKScriptMessageHandler {
             switch type {
             case "ready":
                 // The webview announces itself when Vue has mounted — earlier
-                // than this and `window.lessonStage` does not exist yet.
-                post(PopoutPayload.spikeFixture)
+                // than this and `window.lessonStage` does not exist yet. Flush
+                // whatever a tap queued, or the spike fixture if opened cold.
+                isReady = true
+                post(pendingPayload ?? PopoutPayload.spikeFixture)
             default:
                 break
             }

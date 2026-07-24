@@ -65,6 +65,16 @@ struct LessonStageView: View {
         scheduleChromeHide()
     }
 
+    /// Resolve a tapped lesson block to its body and deal, hand it to the
+    /// popout, and present. A block that doesn't resolve (no payload, unknown
+    /// index) is left alone — suppress the target rather than open an empty
+    /// popout.
+    private func openPopout(forBlock index: Int, in tab: LessonTab) {
+        guard let resolved = tab.payload?.resolve(index: index) else { return }
+        PopoutWebViewHost.shared.show(resolved.message)
+        showPopout = true
+    }
+
     /// Hand the canvases somewhere to report input problems. Debug builds
     /// only; in a shipping build nothing is listening.
     private func attachDiagnostics() {
@@ -173,9 +183,12 @@ struct LessonStageView: View {
                 }
 
                 ZStack(alignment: .bottom) {
-                    PDFDocumentView(host: pdfHost, tab: tab) { pageIndex in
-                        session.recordPage(pageIndex, for: tab.id)
-                    }
+                    PDFDocumentView(
+                        host: pdfHost,
+                        tab: tab,
+                        onPageChange: { pageIndex in session.recordPage(pageIndex, for: tab.id) },
+                        onBlockTap: { index in openPopout(forBlock: index, in: tab) }
+                    )
                     .ignoresSafeArea(edges: showChrome ? [] : .all)
                     // A finger tap reveals the chrome; runs alongside the PDF's
                     // own scroll/zoom/draw rather than blocking them.
@@ -216,6 +229,13 @@ struct LessonStageView: View {
                 // Honour the x-ray toggle whenever a document finishes loading,
                 // so switching to a new tab re-applies (or clears) the overlay.
                 if let document { LessonBlockXray.apply(session.showsBlockXray, to: document) }
+                // `-tapBlock <index>` drives the whole tap→resolve→popout seam
+                // without a physical tap, for a screenshot or a scripted demo.
+                if document != nil,
+                   let flag = ProcessInfo.processInfo.arguments.firstIndex(of: "-tapBlock"),
+                   let index = ProcessInfo.processInfo.arguments[safe: flag + 1].flatMap(Int.init) {
+                    openPopout(forBlock: index, in: tab)
+                }
                 #endif
             }
         } else {

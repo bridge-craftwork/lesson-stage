@@ -42,6 +42,7 @@ struct LessonStageApp: App {
     ///   -present          open in presentation mode
     ///   -libraryEnabled   turn on Load from Library
     ///   -libraryRoot <p>  configure the library root to path `p`, no picker
+    ///   -tapBlock <n>     drive the tap→popout seam for lesson block `n`
     ///
     /// None of this exists in a shipping build. It is here because neither the
     /// document picker nor a tap can be scripted, and a reading surface that

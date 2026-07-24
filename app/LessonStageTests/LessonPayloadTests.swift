@@ -85,6 +85,49 @@ final class LessonPayloadTests: XCTestCase {
         XCTAssertTrue(pbn.contains("[Deal \"S:AQ954.K73.A5.J84 - - -\"]"), "A partial deal — only South")
     }
 
+    // MARK: - Resolving a tapped block
+
+    func testResolveJoinsBodyAndDealForAHandBlock() throws {
+        let payload = try XCTUnwrap(LessonPayload.load(from: try fixture()))
+
+        // Block 1 is the hand, joined to board 1.
+        let resolved = try XCTUnwrap(payload.resolve(index: 1))
+        XCTAssertEqual(resolved.kind, "hand")
+        XCTAssertTrue(resolved.body.contains("A Q 9 5 4"))
+        XCTAssertEqual(resolved.pbn?.contains("[Board \"1\"]"), true, "The hand carries its board's PBN")
+    }
+
+    func testResolveForAnAuctionBoundToADeal() throws {
+        let payload = try XCTUnwrap(LessonPayload.load(from: try fixture()))
+
+        // Block 3 is the second auction, bound to deal 1.
+        let resolved = try XCTUnwrap(payload.resolve(index: 3))
+        XCTAssertEqual(resolved.kind, "auction")
+        XCTAssertEqual(resolved.pbn?.contains("[Board \"1\"]"), true)
+    }
+
+    func testResolveForABlockWithNoDealCarriesNoPBN() throws {
+        let payload = try XCTUnwrap(LessonPayload.load(from: try fixture()))
+
+        // Block 0 is an auction with `deal: null`; block 2 is a response box.
+        XCTAssertNil(try XCTUnwrap(payload.resolve(index: 0)).pbn)
+        XCTAssertNil(try XCTUnwrap(payload.resolve(index: 2)).pbn)
+    }
+
+    func testResolveUnknownIndexIsNil() throws {
+        let payload = try XCTUnwrap(LessonPayload.load(from: try fixture()))
+        XCTAssertNil(payload.resolve(index: 99))
+    }
+
+    func testResolvedMessageIsTheSeamPayload() throws {
+        let payload = try XCTUnwrap(LessonPayload.load(from: try fixture()))
+        let message = try XCTUnwrap(payload.resolve(index: 1)).message
+
+        XCTAssertEqual(message["kind"] as? String, "hand")
+        XCTAssertNotNil(message["blockBody"] as? String)
+        XCTAssertNotNil(message["pbn"] as? String)
+    }
+
     // MARK: - Degraded PDFs
 
     func testPlainPDFHasNoPayload() {
