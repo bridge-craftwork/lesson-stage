@@ -11,6 +11,21 @@ and a spike should not be able to break when it lands.
   `handMetrics.js`, `cardFormatting.js`, `handFit.js`, `cardplayRules.js`.
 - **Edits:** none. Byte-for-byte upstream.
 
+## Auction rendering (added 2026-07-24)
+
+The auction is drawn by the same component the PDFs are built with, so the
+popout matches the printed lesson. Snapshotted from **`lesson-studio`**'s own
+vendored set (which in turn snapshots Bridge-Classroom, with `getSeatOrder`
+lifted into `utils/seatOrder.js`):
+
+- **`components/AuctionTable.vue`**, `components/auctionMetrics.js`,
+  `utils/seatOrder.js` — the renderer + its footprint constants.
+- **`dsl/auction-block.ts`, `dsl/call.ts`** — lesson-studio's Contract 1 auction
+  DSL parser. `parseAuctionBlock(body)` → `toAuctionProps` feeds `AuctionTable`.
+  Their `import type { … } from './types'` is type-only and erased by esbuild,
+  so `types.ts` is not vendored.
+- **Edits:** none.
+
 The directory layout mirrors upstream (`components/` beside `utils/`) precisely
 so the relative imports inside these files resolve unchanged — that is what
 makes "no edits" possible.

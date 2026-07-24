@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import HandDisplay from './vendor/components/HandDisplay.vue'
 import TrickArea from './vendor/components/TrickArea.vue'
+import AuctionTable from './vendor/components/AuctionTable.vue'
+import { parseAuctionBlock, toAuctionProps } from './vendor/dsl/auction-block'
 import {
   computeRemaining,
   getLegalCards,
@@ -94,6 +96,31 @@ const bodySubhead = computed(() => {
 const bodyHtml = computed(() =>
   colorizeSuits(normalizeSuitShorthand(escapeHtml(parsedBody.value.content)))
 )
+
+// ---- Auction: rendered by the same component the PDFs are built with -------
+// Parse the block body with lesson-studio's own DSL parser and feed its vendored
+// AuctionTable, so the popout's auction matches the printed lesson exactly. The
+// component draws the grid and the footnote superscripts; the numbered notes
+// below it are the block view's job, so they're rendered here.
+
+const auctionBlock = computed(() => {
+  if (kind.value !== 'auction') return null
+  try {
+    return parseAuctionBlock(blockBody.value)
+  } catch {
+    return null // malformed → fall back to the monospace body render
+  }
+})
+
+const auctionProps = computed(() => (auctionBlock.value ? toAuctionProps(auctionBlock.value) : null))
+
+const auctionNotes = computed(() => {
+  const notes = auctionBlock.value?.notes || {}
+  return Object.keys(notes)
+    .map(Number)
+    .sort((a, b) => a - b)
+    .map((n) => ({ n, html: colorizeSuits(normalizeSuitShorthand(escapeHtml(notes[n]))) }))
+})
 
 // The whole of play state: an ordered list of plays. Everything else is
 // derived from it, which is what makes stepping back a truncation rather
@@ -251,10 +278,20 @@ onMounted(() => {
       <span v-else class="spacer" />
     </header>
 
-    <!-- Non-hand blocks (auctions, response boxes) render their source text. -->
+    <!-- Non-hand blocks. An auction renders through the vendored AuctionTable
+         (the same component the PDFs are built with); everything else shows its
+         source text. -->
     <div v-if="!showDeal" class="body">
-      <div v-if="bodySubhead" class="body-subhead" v-html="bodySubhead" />
-      <pre class="body-content" v-html="bodyHtml" />
+      <template v-if="auctionProps">
+        <AuctionTable v-bind="auctionProps" />
+        <ol v-if="auctionNotes.length" class="notes">
+          <li v-for="note in auctionNotes" :key="note.n" :value="note.n" v-html="note.html" />
+        </ol>
+      </template>
+      <template v-else>
+        <div v-if="bodySubhead" class="body-subhead" v-html="bodySubhead" />
+        <pre class="body-content" v-html="bodyHtml" />
+      </template>
     </div>
 
     <!-- Each seat is labelled as a group so a test (or a screen reader) can
@@ -413,6 +450,16 @@ button:disabled {
 
 .body-content :deep(.suit-red) { color: #d32f2f; }
 .body-content :deep(.suit-black) { color: #1a1a1a; }
+
+.notes {
+  margin: 6px 0 0;
+  padding-left: 1.5em;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--popout-fg);
+}
+.notes :deep(.suit-red) { color: #d32f2f; }
+.notes :deep(.suit-black) { color: #1a1a1a; }
 
 .seat {
   display: flex;
