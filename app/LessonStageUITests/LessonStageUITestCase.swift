@@ -35,6 +35,11 @@ class LessonStageUITestCase: XCTestCase {
             return url
         }
 
+        // Portrait for every test: the drag-coordinate tests assume it, and a
+        // stray landscape orientation (a probe, a prior run) is device-level
+        // state that would otherwise leak between tests.
+        XCUIDevice.shared.orientation = .portrait
+
         app = XCUIApplication()
     }
 

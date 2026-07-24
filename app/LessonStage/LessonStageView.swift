@@ -99,7 +99,9 @@ struct LessonStageView: View {
             }
         }
         .sheet(isPresented: $showPopout) { PopoutSheet() }
-        .sheet(isPresented: $showGrid) {
+        // Full screen, not a sheet: a sheet on iPad is a centred card only wide
+        // enough for two columns, wasting the landscape width the grid wants.
+        .fullScreenCover(isPresented: $showGrid) {
             LessonGridView(openDocuments: { isImporting = true })
                 .environment(session)
         }

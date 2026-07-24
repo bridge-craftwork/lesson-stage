@@ -165,8 +165,9 @@ final class LessonSession {
         } ?? restored.first?.id
         isRestoring = false
 
-        // Only the visible tab parses now; the rest load when selected.
-        selectedTab?.load()
+        // No PDF is parsed here — the reading view loads the selected tab in
+        // its own task after the first frame, so launch never blocks on
+        // parsing a document (which streams the whole file to hash it).
 
         // Write back if anything was dropped or any bookmark was refreshed.
         if restored.count != persisted.tabs.count { persist() }

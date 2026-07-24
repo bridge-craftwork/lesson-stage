@@ -12,7 +12,9 @@ struct LessonGridView: View {
     @Environment(\.dismiss) private var dismiss
     let openDocuments: () -> Void
 
-    private let columns = [GridItem(.adaptive(minimum: 180, maximum: 260), spacing: 20)]
+    // ~240pt cells: about five across in landscape, three or four in portrait,
+    // at the size that read well already.
+    private let columns = [GridItem(.adaptive(minimum: 240, maximum: 300), spacing: 20)]
 
     var body: some View {
         NavigationStack {
