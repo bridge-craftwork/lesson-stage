@@ -5,13 +5,23 @@ import UniformTypeIdentifiers
 /// for a class — so tabs stay readable rather than collapsing to slivers.
 struct TabStrip: View {
     @Environment(LessonSession.self) private var session
+    @Environment(LibraryManager.self) private var library
     let openGrid: () -> Void
     let openDocuments: () -> Void
+    let openLibrary: () -> Void
+    let openSettings: () -> Void
 
     @State private var draggingID: LessonTab.ID?
 
     var body: some View {
         HStack(spacing: 0) {
+            Button(action: openSettings) {
+                Image(systemName: "gearshape")
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Settings")
+            .accessibilityIdentifier("openSettings")
+
             Button(action: openGrid) {
                 Image(systemName: "square.grid.2x2")
                     .frame(width: 44, height: 44)
@@ -54,6 +64,16 @@ struct TabStrip: View {
             }
 
             Divider()
+
+            // Only when the feature is on, so ordinary users never see it.
+            if library.enabled {
+                Button(action: openLibrary) {
+                    Image(systemName: "calendar")
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Load from Library")
+                .accessibilityIdentifier("openLibrary")
+            }
 
             Button(action: openDocuments) {
                 Image(systemName: "plus")
@@ -153,7 +173,8 @@ private struct TabButton: View {
 }
 
 #Preview {
-    TabStrip(openGrid: {}, openDocuments: {})
+    TabStrip(openGrid: {}, openDocuments: {}, openLibrary: {}, openSettings: {})
         .environment(LessonSession.preview)
+        .environment(LibraryManager())
         .preferredColorScheme(.dark)
 }

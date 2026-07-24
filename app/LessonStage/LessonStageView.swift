@@ -5,12 +5,15 @@ import UniformTypeIdentifiers
 /// sidebar and a presentation mode that strips both away.
 struct LessonStageView: View {
     @Environment(LessonSession.self) private var session
+    @Environment(LibraryManager.self) private var library
 
     // `-popout` opens the sheet straight from launch, so the popout can be
     // driven from a script without a tap. Also the hook UI tests will want.
     @State private var showPopout = ProcessInfo.processInfo.arguments.contains("-popout")
     @State private var isImporting = false
     @State private var showGrid = false
+    @State private var showSettings = false
+    @State private var showLibrary = false
     @State private var pdfHost = PDFViewHost()
 
     // Auto-hide chrome. The tab strip and controls fade out after a few idle
@@ -75,7 +78,9 @@ struct LessonStageView: View {
             if showChrome {
                 TabStrip(
                     openGrid: { showGrid = true },
-                    openDocuments: { isImporting = true }
+                    openDocuments: { isImporting = true },
+                    openLibrary: { showLibrary = true },
+                    openSettings: { showSettings = true }
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
                 Divider()
@@ -99,6 +104,17 @@ struct LessonStageView: View {
             }
         }
         .sheet(isPresented: $showPopout) { PopoutSheet() }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+                .environment(library)
+                .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showLibrary) {
+            LibraryDayListView()
+                .environment(library)
+                .environment(session)
+                .preferredColorScheme(.dark)
+        }
         // Full screen, not a sheet: a sheet on iPad is a centred card only wide
         // enough for two columns, wasting the landscape width the grid wants.
         .fullScreenCover(isPresented: $showGrid) {
@@ -284,5 +300,6 @@ private struct PopoutSheet: View {
 #Preview {
     LessonStageView()
         .environment(LessonSession())
+        .environment(LibraryManager())
         .preferredColorScheme(.dark)
 }

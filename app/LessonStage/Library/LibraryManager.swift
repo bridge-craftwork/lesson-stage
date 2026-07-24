@@ -147,4 +147,18 @@ final class LibraryManager {
     private func save() {
         store.save(LibraryStore.Persisted(enabled: enabled, configuration: configuration))
     }
+
+    #if DEBUG
+    /// Reset to a fresh-install state so a UI test starts from a known point.
+    /// Each launch reuses the same app container; without this a prior test's
+    /// enabled flag or chosen root would leak into the next.
+    func discardSettings() {
+        enabled = false
+        configuration = nil
+        rootURL = nil
+        days = []
+        anchorID = nil
+        save()
+    }
+    #endif
 }
