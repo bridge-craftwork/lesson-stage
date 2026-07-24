@@ -148,10 +148,9 @@ private struct LessonThumbnail: View {
             }
         }
         .task(id: tab.id) {
-            // Loading is a no-op if already loaded; needed for tabs restored
-            // but never shown, whose document is not yet parsed.
-            tab.load()
-            guard let page = tab.document?.page(at: 0) else { return }
+            // Awaits the off-main parse; a no-op if already loaded. Needed for
+            // tabs restored but never shown, whose document is not yet parsed.
+            guard let document = await tab.loaded(), let page = document.page(at: 0) else { return }
             let size = CGSize(width: 240, height: 240)
             image = page.thumbnail(of: size, for: .cropBox)
         }

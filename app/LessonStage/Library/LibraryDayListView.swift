@@ -11,7 +11,10 @@ struct LibraryDayListView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if library.days.isEmpty {
+                if library.days.isEmpty && library.isRefreshing {
+                    ProgressView("Scanning lessons…")
+                        .accessibilityIdentifier("libraryLoading")
+                } else if library.days.isEmpty {
                     emptyState
                 } else {
                     List {

@@ -32,7 +32,7 @@ final class LessonSessionTests: XCTestCase {
 
     // MARK: - Opening
 
-    func testOpeningAddsAndSelectsATab() throws {
+    func testOpeningAddsAndSelectsATab() async throws {
         let session = makeSession()
         let url = try makePDF(named: "one")
 
@@ -41,6 +41,8 @@ final class LessonSessionTests: XCTestCase {
         XCTAssertEqual(session.tabs.count, 1)
         XCTAssertEqual(session.selectedTab?.url, url)
         XCTAssertEqual(session.selectedTab?.title, "one")
+        // Parsing is now off-main; await it before reading the page count.
+        _ = await session.selectedTab?.loaded()
         XCTAssertEqual(session.selectedTab?.pageCount, 2, "The document should be loaded")
     }
 
@@ -250,7 +252,7 @@ final class LessonSessionTests: XCTestCase {
         XCTAssertNil(session.selectedTabID)
     }
 
-    func testOpeningAFileThatIsNotAPDFRecordsFailureWithoutCrashing() throws {
+    func testOpeningAFileThatIsNotAPDFRecordsFailureWithoutCrashing() async throws {
         let session = makeSession()
         let url = directory.appending(path: "not-a-pdf.pdf")
         try Data("this is not a PDF".utf8).write(to: url)
@@ -258,6 +260,7 @@ final class LessonSessionTests: XCTestCase {
         session.open(url: url)
 
         XCTAssertEqual(session.tabs.count, 1, "The tab still opens…")
+        _ = await session.tabs[0].loaded()
         XCTAssertNotNil(session.tabs[0].loadFailure, "…and reports the failure")
         XCTAssertEqual(session.tabs[0].pageCount, 0)
     }

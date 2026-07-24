@@ -30,6 +30,12 @@ final class LibraryManager {
     /// The day to highlight — today or the next upcoming class.
     private(set) var anchorID: LessonDay.ID?
 
+    /// The in-flight discovery, if any. Enumerating a large iCloud tree is slow,
+    /// so it runs off the main thread; this drives a loading state and lets
+    /// `settle()` await it.
+    private var refreshTask: Task<Void, Never>?
+    var isRefreshing: Bool { refreshTask != nil }
+
     var isConfigured: Bool { configuration != nil && rootURL != nil }
 
     private let store: LibraryStore
@@ -90,8 +96,9 @@ final class LibraryManager {
 
     // MARK: - Discovery
 
-    /// Re-run discovery and windowing against the current root. Cheap — it reads
-    /// folder and file names only — so it is safe to call on each sheet open.
+    /// Re-run discovery and windowing against the current root, off the main
+    /// thread. Metadata-only, but a deep iCloud tree still takes long enough to
+    /// stall the UI if done inline, so it is dispatched and published back.
     func refresh(today: Date = Date()) {
         guard let config = configuration, let rootURL else {
             days = []
@@ -99,34 +106,48 @@ final class LibraryManager {
             return
         }
 
-        let windowed: [LessonDay] = withRootAccess(rootURL) {
-            let all = LessonLibrary.discoverDays(root: rootURL, config: config)
-            return LessonLibrary.window(all, around: today, before: config.windowBefore, after: config.windowAfter)
+        refreshTask?.cancel()
+        refreshTask = Task { [weak self] in
+            let windowed = await LibraryManager.discover(root: rootURL, config: config, today: today)
+            guard let self, !Task.isCancelled else { return }
+            self.days = windowed
+            self.anchorID = LessonLibrary.anchorDay(in: windowed, today: today)?.id
+            self.refreshTask = nil
         }
-        days = windowed
-        anchorID = LessonLibrary.anchorDay(in: windowed, today: today)?.id
+    }
+
+    /// Await the in-flight discovery. Tests use this; the UI shows a spinner.
+    func settle() async {
+        await refreshTask?.value
+    }
+
+    private static func discover(root: URL, config: LibraryConfiguration, today: Date) async -> [LessonDay] {
+        await Task.detached(priority: .userInitiated) {
+            let accessing = root.startAccessingSecurityScopedResource()
+            defer { if accessing { root.stopAccessingSecurityScopedResource() } }
+            let all = LessonLibrary.discoverDays(root: root, config: config)
+            return LessonLibrary.window(all, around: today, before: config.windowBefore, after: config.windowAfter)
+        }.value
     }
 
     // MARK: - Opening a day
 
     /// Replace the open tabs with a day's handouts.
     ///
-    /// Remote handouts are kicked off downloading; every handout is opened as a
-    /// tab regardless, so a day whose files are still arriving shows tabs that
-    /// fill in as their PDFs land. Each tab gets its own bookmark, made while
-    /// the root scope is held, so it reopens across launches like a picked file.
+    /// Each handout is opened by its *own* security-scoped bookmark, resolved
+    /// here while the root scope is held — the same shape a picked or restored
+    /// tab has. Handing the tab the raw enumerated URL instead fails once this
+    /// method's root scope is released: that URL is not itself scoped, so the
+    /// tab cannot read it ("could not open"). Resolving gives a URL that grants
+    /// access on its own, and the bookmark also lets the tab reopen next launch.
     func openDay(_ day: LessonDay, into session: LessonSession) {
         guard let rootURL else { return }
 
         let items: [(url: URL, bookmark: Data?)] = withRootAccess(rootURL) {
-            day.handouts.map { handout in
-                if !handout.isLocal {
-                    // Trigger the download; opening will show a placeholder until
-                    // the file is local. iCloud state can't be exercised on the
-                    // simulator, so this path is confirmed on device.
-                    try? FileManager.default.startDownloadingUbiquitousItem(at: handout.url)
-                }
-                return (handout.url, SessionStore.makeBookmark(for: handout.url))
+            day.handouts.compactMap { handout in
+                guard let bookmark = SessionStore.makeBookmark(for: handout.url),
+                      let resolved = SessionStore.resolve(bookmark: bookmark) else { return nil }
+                return (resolved.url, resolved.refreshed ?? bookmark)
             }
         }
 

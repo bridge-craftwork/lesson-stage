@@ -77,13 +77,14 @@ final class LibraryManagerTests: XCTestCase {
         return (LibraryStore(filename: name), name)
     }
 
-    func testConfiguringDiscoversDaysUnderTheRoot() {
+    func testConfiguringDiscoversDaysUnderTheRoot() async {
         let (store, _) = uniqueStore()
         let manager = LibraryManager(store: store)
         XCTAssertFalse(manager.isConfigured)
 
         manager.setEnabled(true)
         manager.configure(rootURL: root)
+        await manager.settle() // discovery runs off-main now
 
         XCTAssertTrue(manager.isConfigured)
         XCTAssertEqual(
@@ -93,12 +94,13 @@ final class LibraryManagerTests: XCTestCase {
         )
     }
 
-    func testTheEnabledFlagAndRootSurviveARelaunch() {
+    func testTheEnabledFlagAndRootSurviveARelaunch() async {
         let (_, name) = uniqueStore()
 
         let first = LibraryManager(store: LibraryStore(filename: name))
         first.setEnabled(true)
         first.configure(rootURL: root)
+        await first.settle()
 
         // A second manager over the same store is the next launch.
         let second = LibraryManager(store: LibraryStore(filename: name))
@@ -106,18 +108,21 @@ final class LibraryManagerTests: XCTestCase {
         XCTAssertTrue(second.isConfigured, "The root bookmark resolves on launch")
 
         second.refresh()
+        await second.settle()
         XCTAssertEqual(second.days.count, 3, "And discovery works against the resolved root")
     }
 
-    func testEditingTheGlobsRefiltersHandouts() {
+    func testEditingTheGlobsRefiltersHandouts() async {
         let (store, _) = uniqueStore()
         let manager = LibraryManager(store: store)
         manager.configure(rootURL: root)
+        await manager.settle()
 
         let july21 = manager.days.first { $0.folderURL.lastPathComponent == "2026-07-21" }!
         XCTAssertEqual(july21.handouts.map(\.name), ["Morning"], "Default *Zoom* glob drops the Zoom notes")
 
         manager.updateConfiguration { $0.ignoreGlobs = [] }
+        await manager.settle()
         let refiltered = manager.days.first { $0.folderURL.lastPathComponent == "2026-07-21" }!
         XCTAssertEqual(refiltered.handouts.map(\.name).sorted(), ["Morning", "Zoom notes"], "Clearing globs shows both")
     }

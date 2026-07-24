@@ -179,7 +179,20 @@ struct LessonStageView: View {
                             .padding()
                             .background(.thinMaterial, in: .rect(cornerRadius: 10))
                             .padding()
-                    } else if showChrome {
+                    } else if tab.document == nil {
+                        // The parse runs off-main; for an iCloud handout it waits
+                        // on a download. Show progress rather than a black page.
+                        VStack(spacing: 12) {
+                            ProgressView()
+                            Text("Loading \(tab.title)…")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .accessibilityIdentifier("loadingIndicator")
+                    }
+
+                    if tab.loadFailure == nil, showChrome {
                         VStack(spacing: 10) {
                             DrawingPalette(host: pdfHost, drawings: tab.drawings)
                             ReadingControls(tab: tab)
