@@ -36,6 +36,10 @@ final class LibraryManager {
     private var refreshTask: Task<Void, Never>?
     var isRefreshing: Bool { refreshTask != nil }
 
+    /// The launch-time root bookmark resolution, awaited by `refresh` so a day
+    /// list opened before it finishes still discovers once the root is ready.
+    private var resolveTask: Task<Void, Never>?
+
     var isConfigured: Bool { configuration != nil && rootURL != nil }
 
     private let store: LibraryStore
@@ -47,15 +51,24 @@ final class LibraryManager {
         self.configuration = persisted.configuration
         self.rootURL = nil
 
-        // Resolve the root bookmark now, refreshing it if the folder moved —
-        // the same dance `SessionStore.resolve` does for open tabs.
-        if let config = persisted.configuration,
-           let (url, refreshed) = SessionStore.resolve(bookmark: config.rootBookmark) {
-            self.rootURL = url
-            if let refreshed {
-                self.configuration?.rootBookmark = refreshed
-                save()
-            }
+        // Resolve the root bookmark OFF the main thread: for an iCloud folder,
+        // resolving (and the stale-refresh `bookmarkData()`) can block, and
+        // this runs during app launch. Blocking here froze the first frame.
+        if persisted.configuration != nil {
+            resolveTask = Task { await self.resolveRoot() }
+        }
+    }
+
+    /// Resolve the persisted root bookmark to a usable URL, refreshing it if the
+    /// folder moved. Runs the blocking resolution on a background task.
+    private func resolveRoot() async {
+        guard let bookmark = configuration?.rootBookmark else { return }
+        let resolved = await Task.detached { SessionStore.resolve(bookmark: bookmark) }.value
+        guard let resolved else { return }
+        rootURL = resolved.url
+        if let refreshed = resolved.refreshed {
+            configuration?.rootBookmark = refreshed
+            save()
         }
     }
 
@@ -75,6 +88,10 @@ final class LibraryManager {
             Self.logger.error("Could not bookmark chosen library root")
             return
         }
+        // A launch-time resolution still in flight would otherwise land later and
+        // clobber the folder just picked.
+        resolveTask?.cancel()
+        resolveTask = nil
         if configuration == nil {
             configuration = LibraryConfiguration(rootBookmark: bookmark)
         } else {
@@ -100,7 +117,7 @@ final class LibraryManager {
     /// thread. Metadata-only, but a deep iCloud tree still takes long enough to
     /// stall the UI if done inline, so it is dispatched and published back.
     func refresh(today: Date = Date()) {
-        guard let config = configuration, let rootURL else {
+        guard configuration != nil else {
             days = []
             anchorID = nil
             return
@@ -108,8 +125,16 @@ final class LibraryManager {
 
         refreshTask?.cancel()
         refreshTask = Task { [weak self] in
+            // Wait for the launch-time bookmark resolution, so a day list opened
+            // before it finishes discovers once the root is ready rather than
+            // showing empty.
+            await self?.resolveTask?.value
+            guard let self, let config = self.configuration, let rootURL = self.rootURL else {
+                self?.refreshTask = nil
+                return
+            }
             let windowed = await LibraryManager.discover(root: rootURL, config: config, today: today)
-            guard let self, !Task.isCancelled else { return }
+            guard !Task.isCancelled else { return }
             self.days = windowed
             self.anchorID = LessonLibrary.anchorDay(in: windowed, today: today)?.id
             self.refreshTask = nil

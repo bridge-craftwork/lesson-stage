@@ -22,7 +22,7 @@ struct LessonStageApp: App {
                         library.discardSettings()
                     }
                     #endif
-                    session.restore()
+                    await session.restore()
                     openLaunchArgumentFiles()
                 }
                 .onChange(of: scenePhase) { _, phase in

@@ -102,13 +102,15 @@ final class LibraryManagerTests: XCTestCase {
         first.configure(rootURL: root)
         await first.settle()
 
-        // A second manager over the same store is the next launch.
+        // A second manager over the same store is the next launch. The root
+        // bookmark resolves off-main, so drive a refresh and let it settle —
+        // refresh awaits that resolution before discovering.
         let second = LibraryManager(store: LibraryStore(filename: name))
         XCTAssertTrue(second.enabled, "The enabled flag persists")
-        XCTAssertTrue(second.isConfigured, "The root bookmark resolves on launch")
 
         second.refresh()
         await second.settle()
+        XCTAssertTrue(second.isConfigured, "The root bookmark resolves on launch")
         XCTAssertEqual(second.days.count, 3, "And discovery works against the resolved root")
     }
 

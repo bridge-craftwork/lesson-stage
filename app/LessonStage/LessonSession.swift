@@ -160,12 +160,20 @@ final class LessonSession {
 
     /// Restore the previous session. Tabs whose files have moved or been
     /// deleted are dropped rather than reopened broken.
-    func restore() {
+    ///
+    /// Bookmark resolution runs off the main thread: for an iCloud item it can
+    /// block, and this is on the launch path — doing it inline froze the first
+    /// frame to a black screen until every tab resolved.
+    func restore() async {
         let persisted = store.load()
-        var restored: [LessonTab] = []
 
-        for entry in persisted.tabs {
-            guard let (url, refreshed) = SessionStore.resolve(bookmark: entry.bookmark) else { continue }
+        let resolved = await Task.detached {
+            persisted.tabs.map { entry in (entry, SessionStore.resolve(bookmark: entry.bookmark)) }
+        }.value
+
+        var restored: [LessonTab] = []
+        for (entry, resolution) in resolved {
+            guard let (url, refreshed) = resolution else { continue }
             let tab = LessonTab(
                 id: entry.id,
                 url: url,

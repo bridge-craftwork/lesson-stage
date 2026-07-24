@@ -95,14 +95,14 @@ final class LessonSessionTests: XCTestCase {
         XCTAssertNil(session.selectedTabID)
     }
 
-    func testReplaceTabsPersistsSoTheNewSetSurvivesRelaunch() throws {
+    func testReplaceTabsPersistsSoTheNewSetSurvivesRelaunch() async throws {
         let session = makeSession()
         session.open(url: try makePDF(named: "old"))
         let new = try makePDF(named: "new")
         session.replaceTabs(with: [(new, SessionStore.makeBookmark(for: new))])
 
         let reopened = makeSession()
-        reopened.restore()
+        await reopened.restore()
 
         XCTAssertEqual(reopened.tabs.map(\.title), ["new"], "The replacement is what restores, not the old set")
     }
@@ -201,19 +201,19 @@ final class LessonSessionTests: XCTestCase {
 
     // MARK: - Position tracking and restore
 
-    func testRecordingAPagePersistsIt() throws {
+    func testRecordingAPagePersistsIt() async throws {
         let session = makeSession()
         session.open(url: try makePDF(named: "one"))
         session.recordPage(1, for: session.tabs[0].id)
 
         let reopened = makeSession()
-        reopened.restore()
+        await reopened.restore()
 
         XCTAssertEqual(reopened.tabs.count, 1)
         XCTAssertEqual(reopened.tabs[0].pageIndex, 1, "Page position should survive a relaunch")
     }
 
-    func testRestoreReopensTabsAndSelection() throws {
+    func testRestoreReopensTabsAndSelection() async throws {
         let session = makeSession()
         let urls = try [makePDF(named: "one"), makePDF(named: "two")]
         session.open(urls: urls)
@@ -221,13 +221,13 @@ final class LessonSessionTests: XCTestCase {
         session.recordPage(0, for: session.tabs[1].id)
 
         let reopened = makeSession()
-        reopened.restore()
+        await reopened.restore()
 
         XCTAssertEqual(reopened.tabs.map(\.title), ["one", "two"])
         XCTAssertEqual(reopened.selectedTab?.title, "two", "Selection should survive too")
     }
 
-    func testRestoreDropsTabsWhoseFilesAreGone() throws {
+    func testRestoreDropsTabsWhoseFilesAreGone() async throws {
         let session = makeSession()
         let kept = try makePDF(named: "kept")
         let doomed = try makePDF(named: "doomed")
@@ -236,7 +236,7 @@ final class LessonSessionTests: XCTestCase {
         try FileManager.default.removeItem(at: doomed)
 
         let reopened = makeSession()
-        reopened.restore()
+        await reopened.restore()
 
         XCTAssertEqual(
             reopened.tabs.map(\.title), ["kept"],
@@ -244,9 +244,9 @@ final class LessonSessionTests: XCTestCase {
         )
     }
 
-    func testRestoreOfAnEmptySessionSelectsNothing() {
+    func testRestoreOfAnEmptySessionSelectsNothing() async {
         let session = makeSession()
-        session.restore()
+        await session.restore()
 
         XCTAssertTrue(session.tabs.isEmpty)
         XCTAssertNil(session.selectedTabID)

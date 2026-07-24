@@ -11,6 +11,7 @@ struct SettingsView: View {
     /// Edited locally and committed on submit / Done, so discovery isn't re-run
     /// against the (possibly iCloud) root on every keystroke.
     @State private var globsDraft = ""
+    @State private var leafDraft = ""
 
     var body: some View {
         NavigationStack {
@@ -27,6 +28,7 @@ struct SettingsView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         commitGlobs()
+                        commitLeaf()
                         dismiss()
                     }
                 }
@@ -34,10 +36,10 @@ struct SettingsView: View {
             .fileImporter(isPresented: $isChoosingFolder, allowedContentTypes: [.folder]) { result in
                 if case .success(let url) = result {
                     library.configure(rootURL: url)
-                    globsDraft = library.configuration?.ignoreGlobs.joined(separator: ", ") ?? ""
+                    syncDrafts()
                 }
             }
-            .onAppear { globsDraft = library.configuration?.ignoreGlobs.joined(separator: ", ") ?? "" }
+            .onAppear(perform: syncDrafts)
         }
         .accessibilityIdentifier("settingsSheet")
     }
@@ -70,6 +72,16 @@ struct SettingsView: View {
 
     private var discoverySection: some View {
         Section {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Handouts subfolder")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("Handouts", text: $leafDraft)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .onSubmit(commitLeaf)
+                    .accessibilityIdentifier("leafSubfolder")
+            }
             Stepper(
                 "Days before: \(library.configuration?.windowBefore ?? 0)",
                 value: windowBinding(\.windowBefore), in: 0...30
@@ -91,7 +103,7 @@ struct SettingsView: View {
         } header: {
             Text("Discovery")
         } footer: {
-            Text("Comma-separated. \u{2018}*\u{2019} matches any run of characters; matching is case-insensitive.")
+            Text("The subfolder inside each day's folder that holds the handouts — leave empty if the PDFs sit directly in the day folder. Ignore globs are comma-separated; \u{2018}*\u{2019} matches any run of characters, case-insensitively.")
         }
     }
 
@@ -102,6 +114,11 @@ struct SettingsView: View {
         )
     }
 
+    private func syncDrafts() {
+        globsDraft = library.configuration?.ignoreGlobs.joined(separator: ", ") ?? ""
+        leafDraft = library.configuration?.leafSubfolder ?? ""
+    }
+
     private func commitGlobs() {
         guard library.isConfigured else { return }
         let globs = globsDraft
@@ -110,6 +127,13 @@ struct SettingsView: View {
             .filter { !$0.isEmpty }
         guard globs != library.configuration?.ignoreGlobs else { return }
         library.updateConfiguration { $0.ignoreGlobs = globs }
+    }
+
+    private func commitLeaf() {
+        guard library.isConfigured else { return }
+        let leaf = leafDraft.trimmingCharacters(in: .whitespaces)
+        guard leaf != library.configuration?.leafSubfolder else { return }
+        library.updateConfiguration { $0.leafSubfolder = leaf }
     }
 }
 
