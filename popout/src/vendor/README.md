@@ -26,6 +26,19 @@ lifted into `utils/seatOrder.js`):
   so `types.ts` is not vendored.
 - **Edits:** none.
 
+## Response-box rendering (added 2026-07-24)
+
+The response box uses lesson-studio's own `ResponseBox` component and DSL parser:
+
+- **`bridge/ResponseBox.vue`, `bridge/BidText.vue`, `bridge/SuitText.vue`** — the
+  titled bid/meaning table and its suit-glyph text renderers.
+- **`dsl/response-box-block.ts`, `dsl/suits.ts`** — `parseResponseBox(body)` →
+  `{ title, rows, note }`, and the red-suit splitter `SuitText` uses.
+- **Edits:** two import lines — `BidText`/`SuitText` import from lesson-studio's
+  `@/dsl` barrel, repointed to the vendored `../dsl/call` and `../dsl/suits`
+  (the alias doesn't exist here). `ResponseBox`'s `--ls-*` CSS vars fall back to
+  their inline defaults, so no theme wiring is needed.
+
 The directory layout mirrors upstream (`components/` beside `utils/`) precisely
 so the relative imports inside these files resolve unchanged — that is what
 makes "no edits" possible.

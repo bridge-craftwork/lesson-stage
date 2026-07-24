@@ -3,7 +3,9 @@ import { computed, onMounted, ref } from 'vue'
 import HandDisplay from './vendor/components/HandDisplay.vue'
 import TrickArea from './vendor/components/TrickArea.vue'
 import AuctionTable from './vendor/components/AuctionTable.vue'
+import ResponseBox from './vendor/bridge/ResponseBox.vue'
 import { parseAuctionBlock, toAuctionProps } from './vendor/dsl/auction-block'
+import { parseResponseBox } from './vendor/dsl/response-box-block'
 import {
   computeRemaining,
   getLegalCards,
@@ -120,6 +122,17 @@ const auctionNotes = computed(() => {
     .map(Number)
     .sort((a, b) => a - b)
     .map((n) => ({ n, html: colorizeSuits(normalizeSuitShorthand(escapeHtml(notes[n]))) }))
+})
+
+// A response box renders through lesson-studio's ResponseBox component, the same
+// as the PDF. Falls back to the monospace body render if the DSL is malformed.
+const responseBox = computed(() => {
+  if (kind.value !== 'response-box') return null
+  try {
+    return parseResponseBox(blockBody.value)
+  } catch {
+    return null
+  }
 })
 
 // The whole of play state: an ordered list of plays. Everything else is
@@ -288,6 +301,7 @@ onMounted(() => {
           <li v-for="note in auctionNotes" :key="note.n" :value="note.n" v-html="note.html" />
         </ol>
       </template>
+      <ResponseBox v-else-if="responseBox" v-bind="responseBox" />
       <template v-else>
         <div v-if="bodySubhead" class="body-subhead" v-html="bodySubhead" />
         <pre class="body-content" v-html="bodyHtml" />
