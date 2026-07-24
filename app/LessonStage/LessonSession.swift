@@ -104,6 +104,24 @@ final class LessonSession {
         }
     }
 
+    /// Swap the whole open set for a new one — the Load-from-Library "open this
+    /// day" action. The current tabs are flushed and closed first, so switching
+    /// days replaces the week's handouts rather than piling onto them.
+    func replaceTabs(with items: [(url: URL, bookmark: Data?)]) {
+        for tab in tabs { tab.close() }
+        isRestoring = true
+        tabs = []
+        selectedTabID = nil
+        isRestoring = false
+
+        for (index, item) in items.enumerated() {
+            // Activate the first; the rest open behind it, as a multi-select does.
+            open(url: item.url, bookmark: item.bookmark, activate: index == 0)
+        }
+        // `open` already persisted; an empty set still needs the cleared state written.
+        if items.isEmpty { persist() }
+    }
+
     func close(_ id: LessonTab.ID) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         tabs[index].close()

@@ -70,6 +70,41 @@ final class LessonSessionTests: XCTestCase {
         XCTAssertEqual(session.selectedTab?.url, urls[0], "The rest open behind the first")
     }
 
+    // MARK: - Replacing (Load from Library)
+
+    func testReplaceTabsSwapsTheWholeOpenSet() throws {
+        let session = makeSession()
+        session.open(urls: try [makePDF(named: "old-one"), makePDF(named: "old-two")])
+
+        let new = try [makePDF(named: "new-one"), makePDF(named: "new-two")]
+        session.replaceTabs(with: new.map { ($0, nil) })
+
+        XCTAssertEqual(session.tabs.map(\.title), ["new-one", "new-two"], "The previous day's handouts are gone")
+        XCTAssertEqual(session.selectedTab?.title, "new-one", "The first of the new set is selected")
+    }
+
+    func testReplaceTabsWithNothingClearsTheSession() throws {
+        let session = makeSession()
+        session.open(url: try makePDF(named: "old"))
+
+        session.replaceTabs(with: [])
+
+        XCTAssertTrue(session.tabs.isEmpty, "An empty day leaves nothing open")
+        XCTAssertNil(session.selectedTabID)
+    }
+
+    func testReplaceTabsPersistsSoTheNewSetSurvivesRelaunch() throws {
+        let session = makeSession()
+        session.open(url: try makePDF(named: "old"))
+        let new = try makePDF(named: "new")
+        session.replaceTabs(with: [(new, SessionStore.makeBookmark(for: new))])
+
+        let reopened = makeSession()
+        reopened.restore()
+
+        XCTAssertEqual(reopened.tabs.map(\.title), ["new"], "The replacement is what restores, not the old set")
+    }
+
     // MARK: - Closing
 
     func testClosingRemovesTheTab() throws {
