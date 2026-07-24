@@ -60,6 +60,23 @@ struct DrawingPalette: View {
             }
 
             #if DEBUG
+            Divider().frame(height: 22)
+
+            // Contract 5 x-ray: outline the lesson-block tap targets, with a
+            // count of how many were detected on the current document. The
+            // toggle lives here, over the page, because the effect is on the
+            // page — the Debug tab is text-only and can't show an overlay.
+            Toggle(isOn: xrayBinding) {
+                HStack(spacing: 4) {
+                    Image(systemName: "rectangle.dashed")
+                    Text("\(blockCount)")
+                        .font(.caption.monospacedDigit())
+                }
+            }
+            .toggleStyle(.button)
+            .accessibilityLabel("X-ray lesson blocks")
+            .accessibilityIdentifier("blockXray")
+
             // A PKDrawing is invisible to the accessibility tree, so the app
             // has to report its own state for a UI test to assert on.
             Text("\(drawings?.annotatedPageCount ?? 0)")
@@ -72,6 +89,23 @@ struct DrawingPalette: View {
         .padding(.vertical, 10)
         .background(.thinMaterial, in: .capsule)
     }
+
+    #if DEBUG
+    private var xrayBinding: Binding<Bool> {
+        Binding(
+            get: { session.showsBlockXray },
+            set: { session.showsBlockXray = $0 }
+        )
+    }
+
+    /// How many `lesson-block:` tap targets the current document carries. Not
+    /// observed reactively — it refreshes when the palette re-renders, which is
+    /// enough for a debug readout.
+    private var blockCount: Int {
+        guard let document = host.pdfView.document else { return 0 }
+        return LessonBlockLinks.targets(in: document).count
+    }
+    #endif
 
     private var drawingEnabled: Binding<Bool> {
         Binding(

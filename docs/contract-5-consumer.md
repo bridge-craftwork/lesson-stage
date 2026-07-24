@@ -84,6 +84,27 @@ canvas consumers only**. Applying it here flips twice and puts every hit target
 in the wrong half of the page. This is the single easiest mistake to make in
 Phase 3; the debug overlay exists partly to make it obvious immediately.
 
+### Observed in a real payload (2026-07-23, `new-minor-forcing.pdf`)
+
+Confirmed against the first real lesson PDF, and worth pinning down because the
+example above leaves two things implicit:
+
+- **`rect` is `[minX, minY, maxX, maxY]`**, not `[x, y, width, height]`. Block 0's
+  `rect: [45, 261, 198, 352.5]` matches its `lesson-block:0` annotation bounds of
+  `(x: 45, y: 261, w: 153, h: 91.5)` exactly. Build the `CGRect` as
+  `(minX, minY, maxX − minX, maxY − minY)`.
+- **`page` is 1-based** (subtract 1 for a `PDFDocument` page index).
+- **`kind`** seen so far: `auction`, `hand`, `response-box`.
+- **The PBN join splits by kind.** A `hand` block carries `board` (→ PBN
+  `[Board "n"]`); an `auction` block carries `deal` (a board number, or `null`
+  when no deal is bound to it). Both are board numbers, matching the
+  "`board` is the join" rule — the key name just differs by block kind.
+- A `fragmented: []` array appears alongside `unlocated: []` — an unknown field
+  to ignore per the version-dispatch rule.
+- The four attachments and their `AFRelationship`s (`Source`/`Supplement`/
+  `Data`/`Data`) are exactly as specified; `lesson-block:` link annotations are
+  `PDFActionURL`s with the bare `lesson-block:<index>` URI, one per fragment.
+
 ### Three fields that are easy to get wrong
 
 **`blocks[].board` is the join — not `index`.** PBN boards are renumbered

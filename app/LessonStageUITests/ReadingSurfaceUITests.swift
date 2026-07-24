@@ -80,6 +80,24 @@ final class ReadingSurfaceUITests: LessonStageUITestCase {
         XCTAssertTrue(app.staticTexts["pageIndicator"].exists, "The reader survives a full rotation")
     }
 
+    func testBlockXrayToggleIsAvailableAndStable() {
+        let app = launchWithFixtures()
+        XCTAssertTrue(app.otherElements["pdfView"].waitForExistence(timeout: 10))
+
+        // The generated fixtures carry no lesson-block annotations, so there is
+        // nothing to outline — this confirms the debug toggle exists and that
+        // turning it on and off leaves the reader working. Detection itself is
+        // covered by the unit tests, which synthesise the annotations.
+        // A button-styled Toggle surfaces as a switch, not a button, so match on
+        // the identifier across every element type.
+        let xray = app.descendants(matching: .any)["blockXray"].firstMatch
+        XCTAssertTrue(xray.waitForExistence(timeout: 5))
+
+        xray.tap()
+        xray.tap()
+        XCTAssertTrue(app.staticTexts["pageIndicator"].exists, "Toggling x-ray leaves the reader working")
+    }
+
     func testPresentationModeHidesAndRestoresChrome() {
         let app = launchWithFixtures()
         XCTAssertTrue(tab("lesson-a").waitForExistence(timeout: 10))

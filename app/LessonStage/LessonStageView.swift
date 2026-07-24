@@ -138,6 +138,14 @@ struct LessonStageView: View {
             pdfHost.canvases.tool = session.tool
             if showChrome { scheduleChromeHide(after: chromeQuickHide) }
         }
+        #if DEBUG
+        // Toggle the Contract 5 x-ray overlay live on the current document.
+        .onChange(of: session.showsBlockXray) { _, on in
+            if let document = session.selectedTab?.document {
+                LessonBlockXray.apply(on, to: document)
+            }
+        }
+        #endif
     }
 
     @ViewBuilder
@@ -202,7 +210,14 @@ struct LessonStageView: View {
                 }
             }
             // A tab that was restored but never shown has no document yet.
-            .task(id: tab.id) { tab.load() }
+            .task(id: tab.id) {
+                let document = await tab.loaded()
+                #if DEBUG
+                // Honour the x-ray toggle whenever a document finishes loading,
+                // so switching to a new tab re-applies (or clears) the overlay.
+                if let document { LessonBlockXray.apply(session.showsBlockXray, to: document) }
+                #endif
+            }
         } else {
             EmptyStateView(
                 openDocuments: { isImporting = true },

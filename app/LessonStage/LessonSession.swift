@@ -61,6 +61,11 @@ final class LessonSession {
     /// only — this is a development instrument, not a feature.
     let diagnostics = CanvasDiagnostics()
     var showsDiagnostics = false
+
+    /// Whether the Contract 5 block x-ray overlay is on — outlines the
+    /// `lesson-block:` tap targets on the page. A development instrument for
+    /// confirming detection before the popout can consume the blocks.
+    var showsBlockXray = false
     #endif
 
     private let store: SessionStore
