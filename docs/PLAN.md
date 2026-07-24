@@ -238,16 +238,41 @@ Rust-to-WASM is **not** part of this phase; see ADR-003.
 **Exit:** the motivating demo — tap a hand on the projector, play it out
 trick by trick.
 
-### Phase 5 — iCloud lessons folder (1 week)
+### Phase 5 — iCloud lessons folder — **built**
 
-- Folder picker → security-scoped bookmark, persisted.
-- On launch: enumerate the lessons folder, `startDownloadingUbiquitousItem`
-  for anything not local, surface "today's lessons" (date-named folder or
-  most-recent, whichever matches the library's layout).
-- One-tap "open today's set as tabs" replacing the weekly import/discard
-  ritual.
+Folder-structure-agnostic and config-driven throughout, so it can ship
+publicly rather than being wired to one person's Drive layout.
 
-**Exit:** Tuesday morning is: open app, tap today, teach.
+- **Discovery engine** (`Library/`): `LessonLibrary.discoverDays` recurses a
+  chosen root reading folder and file *names* only — never downloading from
+  iCloud — and finds folders whose name carries a date, taking the date from
+  that folder's name (walking through year/month folders without parsing
+  them). `window(_:around:before:after:)` anchors on today-or-next; globs and
+  window sizes come from a persisted `LibraryConfiguration`, nothing hardcoded.
+- **Settings sheet** (`SettingsView`, a gear in the tab strip): a toggle
+  "Enable Load from Library", off by default so ordinary users never see the
+  feature. Enabling reveals a directory picker (`fileImporter` over `.folder`
+  → security-scoped bookmark) and, once configured, editable ignore-globs and
+  before/after window sizes.
+- **Day list** (`LibraryDayListView`, a calendar button shown only when
+  enabled): the window of days around today — date, handout count, the
+  today-or-next anchor badged, precreated-but-empty days dimmed "Not planned".
+  Tapping a populated day replaces the open tabs with its handouts and kicks
+  off `startDownloadingUbiquitousItem` for any that are still remote.
+- **Persistence** (`LibraryStore`): the enabled flag and the configuration
+  (with its root bookmark) in `library.json`, resolved and refreshed-if-stale
+  on launch, exactly as `SessionStore` does for the open tabs.
+
+**Verification.** Discovery, windowing, glob filtering, the store round-trip,
+the manager's configure→discover and resolve-on-relaunch, and the
+replace-all-tabs path are unit-tested against a local temp tree; the settings
+toggle and day list are UI-tested (root handed in by `-libraryRoot`, since the
+directory picker is a system UI a test cannot drive). iCloud download *state*
+cannot be simulated, so `openDay`'s remote path is confirmed on device; every
+local-file path is covered.
+
+**Exit:** Tuesday morning is: open app, tap today, teach. **Met** — pending a
+device pass over the iCloud download path.
 
 ### Phase 6 — Classroom polish (ongoing)
 
