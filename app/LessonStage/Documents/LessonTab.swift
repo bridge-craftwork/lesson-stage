@@ -71,13 +71,10 @@ final class LessonTab: Identifiable {
         }
 
         let url = self.url
-        let title = self.title
-        LaunchLog.mark("LessonTab.load kickoff — \(title)")
         loadTask = Task { [weak self] in
-            let loaded = await LessonTab.parse(url: url, title: title)
+            let loaded = await LessonTab.parse(url: url)
             guard let self else { return }
             self.finishLoading(loaded)
-            LaunchLog.mark("LessonTab.finishLoading — \(title), doc=\(loaded.document != nil)")
             self.loadTask = nil
         }
     }
@@ -98,22 +95,16 @@ final class LessonTab: Identifiable {
         let hash: String?
     }
 
-    private static func parse(url: URL, title: String) async -> Loaded {
+    private static func parse(url: URL) async -> Loaded {
         // Wait for an iCloud placeholder to materialise before reading it, so a
         // not-yet-downloaded handout opens once it lands rather than failing
         // with "could not open". A local file returns immediately.
-        LaunchLog.mark("parse.ensureDownloaded begin — \(title)")
         await ensureDownloaded(url)
-        LaunchLog.mark("parse.ensureDownloaded end — \(title)")
-        let loaded = await Task.detached(priority: .userInitiated) {
-            LaunchLog.mark("parse.PDFDocument begin — \(title)")
+        return await Task.detached(priority: .userInitiated) {
             let document = PDFDocument(url: url)
-            LaunchLog.mark("parse.PDFDocument end — \(title), doc=\(document != nil)")
             let hash = document == nil ? nil : ContentHash.sha256(of: url)
-            LaunchLog.mark("parse.hash end — \(title)")
             return Loaded(document: document, hash: hash)
         }.value
-        return loaded
     }
 
     private static func ensureDownloaded(_ url: URL) async {
