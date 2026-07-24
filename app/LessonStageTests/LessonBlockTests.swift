@@ -112,4 +112,29 @@ final class LessonBlockXrayTests: XCTestCase {
         let overlay = doc.page(at: 0)!.annotations.filter { $0.userName == LessonBlockXray.ownerTag }
         XCTAssertEqual(overlay.count, 6, "Re-applying clears first, so overlays don't stack")
     }
+
+    func testLabelsCarryTheKindFromTheClickMap() throws {
+        let doc = try Fixtures.document(Fixtures.newMinorForcing)
+        LessonBlockXray.apply(true, to: doc)
+
+        let labels = doc.page(at: 0)!.annotations
+            .filter { $0.userName == LessonBlockXray.ownerTag }
+            .compactMap(\.contents)
+            .filter { $0.hasPrefix("#") }
+
+        XCTAssertEqual(labels.count, 4)
+        XCTAssertEqual(labels.sorted(), ["#0 auction", "#1 hand", "#2 response-box", "#3 auction"])
+    }
+
+    func testLabelsFallBackToIndexWithoutAClickMap() {
+        // Synthesised annotations, no embedded payload → bare index labels.
+        let doc = documentWithBlocks(2)
+        LessonBlockXray.apply(true, to: doc)
+
+        let labels = doc.page(at: 0)!.annotations
+            .filter { $0.userName == LessonBlockXray.ownerTag }
+            .compactMap(\.contents)
+            .filter { $0.hasPrefix("#") }
+        XCTAssertEqual(labels.sorted(), ["#0", "#1"])
+    }
 }

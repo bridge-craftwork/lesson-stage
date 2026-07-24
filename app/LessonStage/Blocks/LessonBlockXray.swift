@@ -21,11 +21,20 @@ enum LessonBlockXray {
     static func apply(_ on: Bool, to document: PDFDocument) {
         clear(from: document)
         guard on else { return }
+        // The kind comes from the click map when it's present — labelling a
+        // target "auction"/"hand" also cross-checks that the JSON block and the
+        // annotation index line up. Falls back to the bare index otherwise.
+        let kinds = kindsByIndex(in: document)
         for target in LessonBlockLinks.targets(in: document) {
             guard let page = document.page(at: target.pageIndex) else { continue }
             page.addAnnotation(outline(for: target))
-            page.addAnnotation(label(for: target))
+            page.addAnnotation(label(for: target, kind: kinds[target.index]))
         }
+    }
+
+    private static func kindsByIndex(in document: PDFDocument) -> [Int: String] {
+        guard let map = LessonPayload.load(from: document)?.map else { return [:] }
+        return Dictionary(map.blocks.map { ($0.index, $0.kind) }, uniquingKeysWith: { first, _ in first })
     }
 
     static func clear(from document: PDFDocument) {
@@ -50,9 +59,14 @@ enum LessonBlockXray {
         return annotation
     }
 
-    /// A small `#index` tag tucked into the block's top-left corner.
-    private static func label(for target: LessonBlockTarget) -> PDFAnnotation {
-        let size = CGSize(width: 34, height: 15)
+    /// A small `#index kind` tag tucked into the block's top-left corner — just
+    /// `#index` when there's no click map to name the kind.
+    private static func label(for target: LessonBlockTarget, kind: String?) -> PDFAnnotation {
+        let text = kind.map { "#\(target.index) \($0)" } ?? "#\(target.index)"
+        // Roughly size the box to the text at 9pt, capped to the block width so
+        // it never spills past the outline.
+        let width = min(max(CGFloat(text.count) * 6 + 8, 34), target.bounds.width)
+        let size = CGSize(width: width, height: 15)
         // maxY is the top edge in page space (origin bottom-left); sit just inside it.
         let origin = CGPoint(x: target.bounds.minX, y: target.bounds.maxY - size.height)
         let annotation = PDFAnnotation(
@@ -60,7 +74,7 @@ enum LessonBlockXray {
             forType: .freeText,
             withProperties: nil
         )
-        annotation.contents = "#\(target.index)"
+        annotation.contents = text
         annotation.font = UIFont.boldSystemFont(ofSize: 9)
         annotation.fontColor = .white
         annotation.color = tint
