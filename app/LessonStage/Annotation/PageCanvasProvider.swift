@@ -157,6 +157,7 @@ final class PageCanvasProvider: NSObject {
 extension PageCanvasProvider: PDFPageOverlayViewProvider {
     func pdfView(_ view: PDFView, overlayViewFor page: PDFPage) -> UIView? {
         guard let index = view.document?.index(for: page) else { return nil }
+        LaunchLog.mark("overlayViewFor page \(index)")
 
         let canvas = liveCanvases[index] ?? makeCanvas(forPage: index)
         canvas.drawing = drawings?.drawing(forPage: index) ?? PKDrawing()

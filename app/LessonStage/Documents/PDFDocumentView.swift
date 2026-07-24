@@ -25,6 +25,7 @@ final class PDFViewHost {
     let pencilToggle = PencilToggleController()
 
     init() {
+        LaunchLog.mark("PDFViewHost.init begin")
         let view = PDFView()
 
         // Continuous vertical scroll: a lesson is read as a strip, not paged
@@ -51,6 +52,7 @@ final class PDFViewHost {
         let pencilInteraction = UIPencilInteraction()
         pencilInteraction.delegate = pencilToggle
         view.addInteraction(pencilInteraction)
+        LaunchLog.mark("PDFViewHost.init end")
 
         #if DEBUG
         // The simulator has no Pencil, so `.pencilOnly` would make every
@@ -74,11 +76,13 @@ struct PDFDocumentView: UIViewRepresentable {
     var onPageChange: (Int) -> Void
 
     func makeUIView(context: Context) -> PDFView {
+        LaunchLog.mark("PDFDocumentView.makeUIView")
         context.coordinator.observe(host.pdfView)
         return host.pdfView
     }
 
     func updateUIView(_ view: PDFView, context: Context) {
+        LaunchLog.mark("PDFDocumentView.updateUIView — doc=\(tab.document != nil), tab=\(tab.title)")
         context.coordinator.onPageChange = onPageChange
 
         // Swapping tabs reuses this view, so the document may be new. Compare
@@ -99,7 +103,9 @@ struct PDFDocumentView: UIViewRepresentable {
         // as a page change; recorded, it overwrites the very position being
         // restored — the restore then "works" and is immediately undone.
         context.coordinator.beginRestoring()
+        LaunchLog.mark("set view.document (pageCount=\(tab.document?.pageCount ?? -1))")
         view.document = tab.document
+        LaunchLog.mark("view.document set")
 
         // A document set this frame has no layout yet, and both of the things
         // that follow need one:
@@ -111,7 +117,9 @@ struct PDFDocumentView: UIViewRepresentable {
         let pageIndex = tab.pageIndex
         let canvases = host.canvases
         Task { @MainActor in
+            LaunchLog.mark("layoutIfNeeded begin")
             view.layoutIfNeeded()
+            LaunchLog.mark("layoutIfNeeded end")
             view.autoScales = true
             coordinator.restore(pageIndex: pageIndex, in: view)
             // Draw the saved highlights back onto the pages. Deferred with the

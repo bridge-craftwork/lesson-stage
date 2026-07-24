@@ -122,6 +122,7 @@ struct LessonStageView: View {
                 .environment(session)
         }
         .onAppear {
+            LaunchLog.mark("LessonStageView.onAppear")
             attachDiagnostics()
             pdfHost.pencilToggle.onTap = { session.toggleEraser() }
         }
@@ -202,7 +203,10 @@ struct LessonStageView: View {
                 }
             }
             // A tab that was restored but never shown has no document yet.
-            .task(id: tab.id) { tab.load() }
+            .task(id: tab.id) {
+                LaunchLog.mark("documentArea.task — load \(tab.title)")
+                tab.load()
+            }
         } else {
             EmptyStateView(
                 openDocuments: { isImporting = true },

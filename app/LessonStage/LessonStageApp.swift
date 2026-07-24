@@ -7,7 +7,8 @@ struct LessonStageApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
-        WindowGroup {
+        let _ = LaunchLog.mark("App.body evaluated")
+        return WindowGroup {
             LessonStageView()
                 .environment(session)
                 .environment(library)
@@ -16,14 +17,18 @@ struct LessonStageApp: App {
                 // against a light scheme that renders them dark-on-dark.
                 .preferredColorScheme(.dark)
                 .task {
+                    LaunchLog.mark("App.task begin")
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("-reset") {
                         session.discardSavedSession()
                         library.discardSettings()
                     }
                     #endif
+                    LaunchLog.mark("restore begin")
                     await session.restore()
+                    LaunchLog.mark("restore end — \(session.tabs.count) tabs, selected=\(session.selectedTab?.title ?? "none")")
                     openLaunchArgumentFiles()
+                    LaunchLog.mark("openLaunchArgumentFiles end")
                 }
                 .onChange(of: scenePhase) { _, phase in
                     // Suspension can follow immediately; do not let the save
