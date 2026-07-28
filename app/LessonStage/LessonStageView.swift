@@ -97,23 +97,29 @@ struct LessonStageView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if showChrome {
-                TabStrip(
-                    openGrid: { showGrid = true },
-                    openDocuments: { isImporting = true },
-                    openLibrary: { showLibrary = true },
-                    openSettings: { showSettings = true }
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-                Divider()
+        readingArea
+            // Dark surround: the projector shows this behind every page.
+            .background(Color.presentationSurround)
+            // The tab strip floats over the top rather than sitting in a stack
+            // that pushes the page down — so the page, and anything being
+            // written on it, holds still as the chrome shows and hides. (The
+            // toolbar already floats at the bottom the same way.)
+            .overlay(alignment: .top) {
+                if showChrome {
+                    VStack(spacing: 0) {
+                        TabStrip(
+                            openGrid: { showGrid = true },
+                            openDocuments: { isImporting = true },
+                            openLibrary: { showLibrary = true },
+                            openSettings: { showSettings = true }
+                        )
+                        Divider()
+                    }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
-            readingArea
-        }
-        // Dark surround: the projector shows this behind every page.
-        .background(Color.presentationSurround)
-        .overlay(alignment: .topTrailing) { presentationExit }
-        .statusBarHidden(!showChrome)
+            .overlay(alignment: .topTrailing) { presentationExit }
+            .statusBarHidden(!showChrome)
         .fileImporter(
             isPresented: $isImporting,
             allowedContentTypes: [.pdf],
@@ -204,7 +210,10 @@ struct LessonStageView: View {
                         // excluded inside the view, so an eraser tap can't).
                         onFingerTap: { toggleChrome() }
                     )
-                    .ignoresSafeArea(edges: showChrome ? [] : .all)
+                    // Always edge-to-edge, so its frame never changes with the
+                    // chrome. The floating tab strip and toolbar cover its top
+                    // and bottom edges while shown; the page itself never moves.
+                    .ignoresSafeArea()
 
                     if let failure = tab.loadFailure {
                         Text(failure)
