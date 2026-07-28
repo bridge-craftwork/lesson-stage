@@ -111,7 +111,8 @@ struct LessonStageView: View {
                             openGrid: { showGrid = true },
                             openDocuments: { isImporting = true },
                             openLibrary: { showLibrary = true },
-                            openSettings: { showSettings = true }
+                            openSettings: { showSettings = true },
+                            openBlank: { session.openBlank() }
                         )
                         Divider()
                     }

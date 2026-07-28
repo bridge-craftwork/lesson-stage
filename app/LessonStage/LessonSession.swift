@@ -86,7 +86,7 @@ final class LessonSession {
     /// Reopening rather than duplicating matters in class: the same lesson
     /// gets tapped twice and a second tab scrolled to a different page is
     /// never what was wanted.
-    func open(url: URL, bookmark: Data? = nil, activate: Bool = true) {
+    func open(url: URL, bookmark: Data? = nil, activate: Bool = true, title: String? = nil) {
         if let existing = tabs.first(where: { $0.url == url }) {
             if activate { selectedTabID = existing.id }
             return
@@ -94,12 +94,22 @@ final class LessonSession {
 
         let tab = LessonTab(
             url: url,
+            title: title,
             bookmark: bookmark ?? SessionStore.makeBookmark(for: url)
         )
         tab.load()
         tabs.append(tab)
         if activate { selectedTabID = tab.id }
         persist()
+    }
+
+    /// Open a fresh blank sheet to write or draw on. Numbered when more than one
+    /// is open, so the tabs stay distinguishable.
+    func openBlank() {
+        guard let url = BlankSheet.create() else { return }
+        let existing = tabs.filter { $0.title.hasPrefix("Blank Sheet") }.count
+        let title = existing == 0 ? "Blank Sheet" : "Blank Sheet \(existing + 1)"
+        open(url: url, title: title)
     }
 
     func open(urls: [URL]) {

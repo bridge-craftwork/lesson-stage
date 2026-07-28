@@ -107,6 +107,20 @@ final class LessonSessionTests: XCTestCase {
         XCTAssertEqual(reopened.tabs.map(\.title), ["new"], "The replacement is what restores, not the old set")
     }
 
+    // MARK: - Blank sheets
+
+    func testOpenBlankAddsNumberedWritableTabs() async throws {
+        let session = makeSession()
+        session.openBlank()
+        session.openBlank()
+        defer { for tab in session.tabs { try? FileManager.default.removeItem(at: tab.url) } }
+
+        XCTAssertEqual(session.tabs.map(\.title), ["Blank Sheet", "Blank Sheet 2"], "Numbered so they stay distinct")
+        _ = await session.tabs[0].loaded()
+        XCTAssertEqual(session.tabs[0].pageCount, 1, "A blank is a real one-page PDF")
+        XCTAssertEqual(session.selectedTab?.title, "Blank Sheet 2", "The new blank is activated")
+    }
+
     // MARK: - Closing
 
     func testClosingRemovesTheTab() throws {

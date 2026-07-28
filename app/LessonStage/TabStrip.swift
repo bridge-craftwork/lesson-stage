@@ -10,6 +10,7 @@ struct TabStrip: View {
     let openDocuments: () -> Void
     let openLibrary: () -> Void
     let openSettings: () -> Void
+    let openBlank: () -> Void
 
     @State private var draggingID: LessonTab.ID?
 
@@ -74,6 +75,13 @@ struct TabStrip: View {
                 .accessibilityLabel("Load from Library")
                 .accessibilityIdentifier("openLibrary")
             }
+
+            Button(action: openBlank) {
+                Image(systemName: "square.and.pencil")
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("New blank sheet")
+            .accessibilityIdentifier("openBlank")
 
             Button(action: openDocuments) {
                 Image(systemName: "plus")
@@ -173,7 +181,7 @@ private struct TabButton: View {
 }
 
 #Preview {
-    TabStrip(openGrid: {}, openDocuments: {}, openLibrary: {}, openSettings: {})
+    TabStrip(openGrid: {}, openDocuments: {}, openLibrary: {}, openSettings: {}, openBlank: {})
         .environment(LessonSession.preview)
         .environment(LibraryManager())
         .preferredColorScheme(.dark)

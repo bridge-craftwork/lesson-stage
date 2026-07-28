@@ -10,6 +10,23 @@ final class TabStripUITests: LessonStageUITestCase {
         XCTAssertTrue(app.staticTexts["pageIndicator"].waitForExistence(timeout: 5))
     }
 
+    func testNewBlankSheetOpensAWritableTab() {
+        let app = launchWithFixtures()
+        XCTAssertTrue(app.buttons["openBlank"].waitForExistence(timeout: 10))
+
+        app.buttons["openBlank"].tap()
+
+        XCTAssertTrue(tab("Blank Sheet").waitForExistence(timeout: 5), "A blank sheet tab opens")
+        let indicator = app.staticTexts["pageIndicator"]
+        XCTAssertTrue(indicator.waitForExistence(timeout: 5))
+        XCTAssertEqual(indicator.label, "Page 1 of 1", "The blank is the one-page document on screen")
+
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "blank-sheet"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
     func testTappingATabSwitchesDocument() {
         let app = launchWithFixtures()
         XCTAssertTrue(tab("lesson-b").waitForExistence(timeout: 10))
