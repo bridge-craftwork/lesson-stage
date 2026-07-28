@@ -98,6 +98,9 @@ struct PDFDocumentView: UIViewRepresentable {
     var onPageChange: (Int) -> Void
     /// A tap that landed on a `lesson-block:` target, by its block index.
     var onBlockTap: (Int) -> Void = { _ in }
+    /// A *finger* tap on the page — toggles the chrome. Pencil taps (an eraser
+    /// tap, a pen dot) are excluded, so annotating never disturbs the toolbar.
+    var onFingerTap: () -> Void = {}
 
     func makeUIView(context: Context) -> PDFView {
         context.coordinator.observe(host.pdfView)
@@ -107,6 +110,7 @@ struct PDFDocumentView: UIViewRepresentable {
     func updateUIView(_ view: PDFView, context: Context) {
         context.coordinator.onPageChange = onPageChange
         context.coordinator.onBlockTap = onBlockTap
+        context.coordinator.onFingerTap = onFingerTap
 
         // Swapping tabs reuses this view, so the document may be new. Compare
         // by tab rather than by document: two tabs could be the same file, and
@@ -157,6 +161,7 @@ struct PDFDocumentView: UIViewRepresentable {
 
         var onPageChange: (Int) -> Void
         var onBlockTap: (Int) -> Void = { _ in }
+        var onFingerTap: () -> Void = {}
         var currentTabID: LessonTab.ID?
         private var isRestoring = false
         private var observer: (any NSObjectProtocol)?
@@ -183,6 +188,23 @@ struct PDFDocumentView: UIViewRepresentable {
             let tap = UITapGestureRecognizer(target: self, action: #selector(handleBlockTap(_:)))
             tap.delegate = self
             view.addGestureRecognizer(tap)
+
+            // Toggle the chrome on a *finger* tap only. A UIKit recogniser is
+            // used rather than a SwiftUI `TapGesture` because only this can
+            // exclude the Pencil by touch type: an eraser tap (or a pen dot) is
+            // a discrete tap that would otherwise pop the toolbar mid-annotation.
+            let fingerTap = UITapGestureRecognizer(target: self, action: #selector(handleFingerTap(_:)))
+            fingerTap.delegate = self
+            fingerTap.allowedTouchTypes = [
+                NSNumber(value: UITouch.TouchType.direct.rawValue),
+                NSNumber(value: UITouch.TouchType.indirectPointer.rawValue),
+            ]
+            view.addGestureRecognizer(fingerTap)
+        }
+
+        @objc private func handleFingerTap(_ recognizer: UITapGestureRecognizer) {
+            guard recognizer.state == .ended else { return }
+            onFingerTap()
         }
 
         @objc private func handleBlockTap(_ recognizer: UITapGestureRecognizer) {

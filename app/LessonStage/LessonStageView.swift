@@ -199,12 +199,12 @@ struct LessonStageView: View {
                         host: pdfHost,
                         tab: tab,
                         onPageChange: { pageIndex in session.recordPage(pageIndex, for: tab.id) },
-                        onBlockTap: { index in openPopout(forBlock: index, in: tab) }
+                        onBlockTap: { index in openPopout(forBlock: index, in: tab) },
+                        // A finger tap toggles the chrome (Pencil taps are
+                        // excluded inside the view, so an eraser tap can't).
+                        onFingerTap: { toggleChrome() }
                     )
                     .ignoresSafeArea(edges: showChrome ? [] : .all)
-                    // A finger tap toggles the chrome; runs alongside the PDF's
-                    // own scroll/zoom/draw rather than blocking them.
-                    .simultaneousGesture(TapGesture().onEnded { toggleChrome() })
 
                     if let failure = tab.loadFailure {
                         Text(failure)
