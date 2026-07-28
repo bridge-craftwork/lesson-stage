@@ -8,6 +8,10 @@ struct DrawingPalette: View {
     @Environment(LessonSession.self) private var session
     let host: PDFViewHost
     let drawings: DrawingSet?
+    /// Called after a palette action that should dismiss the chrome — a tool
+    /// pick, rotate, or clear. *Not* undo, which is repeated, nor the debug
+    /// x-ray toggle, which is compared on and off.
+    var onSelect: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 10) {
@@ -24,6 +28,7 @@ struct DrawingPalette: View {
             // when the Pencil is set to scroll rather than mark.
             Button {
                 host.rotateCurrentPageCounterclockwise()
+                onSelect()
             } label: {
                 Image(systemName: "rotate.left")
             }
@@ -49,6 +54,7 @@ struct DrawingPalette: View {
 
                 Button {
                     host.canvases.clearAllMarks()
+                    onSelect()
                 } label: {
                     Image(systemName: "trash")
                 }
@@ -113,6 +119,7 @@ struct DrawingPalette: View {
             set: { newValue in
                 session.isDrawingEnabled = newValue
                 host.canvases.isDrawingEnabled = newValue
+                onSelect()
             }
         )
     }
@@ -123,6 +130,7 @@ struct DrawingPalette: View {
             // onChange in LessonStageView), so setting it here is enough — the
             // same path the Pencil double-tap uses.
             session.tool = tool
+            onSelect()
         } label: {
             Image(systemName: tool.symbolName)
                 .foregroundStyle(tool.tint ?? .primary)

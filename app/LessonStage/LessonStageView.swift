@@ -27,16 +27,16 @@ struct LessonStageView: View {
     /// How long the chrome lingers after the last reveal. Short under a test
     /// flag so the behaviour can be exercised without a real wait.
     private var chromeIdleHide: Duration {
-        // 2.5s under the test flag: long enough for XCUITest to observe the
-        // revealed state before it fades, short enough to keep the test quick.
-        ProcessInfo.processInfo.arguments.contains("-fastChrome") ? .milliseconds(2500) : .seconds(5)
+        // 4s under the test flag: long enough that a test can reveal the chrome,
+        // find a control, and tap it before the idle fade races in — but short
+        // enough to keep the auto-hide test quick.
+        ProcessInfo.processInfo.arguments.contains("-fastChrome") ? .seconds(4) : .seconds(5)
     }
 
-    /// The shorter delay after acting on a control — you picked a tool, so the
-    /// chrome should get out of the way promptly rather than lingering the full
-    /// idle spell.
-    private var chromeQuickHide: Duration {
-        ProcessInfo.processInfo.arguments.contains("-fastChrome") ? .milliseconds(2500) : .seconds(1.5)
+    /// Tests that aren't about chrome pin it open, so nothing — idle fade or an
+    /// explicit dismiss — can pull a tab or tool out from under an assertion.
+    private var chromeFrozen: Bool {
+        ProcessInfo.processInfo.arguments.contains("-noAutoHide")
     }
 
     /// Chrome is shown only when revealed and not in the explicit presentation
@@ -48,10 +48,7 @@ struct LessonStageView: View {
         hideTask?.cancel()
         // Nothing to clean up with no lesson open — the empty state keeps its
         // buttons.
-        guard session.selectedTab != nil else { return }
-        // Tests that aren't about auto-hide pin the chrome open, so an idle
-        // fade cannot pull a tab or tool out from under them.
-        if ProcessInfo.processInfo.arguments.contains("-noAutoHide") { return }
+        guard session.selectedTab != nil, !chromeFrozen else { return }
         let delay = delay ?? chromeIdleHide
         hideTask = Task { @MainActor in
             try? await Task.sleep(for: delay)
@@ -63,6 +60,22 @@ struct LessonStageView: View {
     private func revealChrome() {
         withAnimation(.easeInOut(duration: 0.2)) { chromeVisible = true }
         scheduleChromeHide()
+    }
+
+    /// Dismiss the chrome now — a finger tap on the page while it's up, or
+    /// picking a tool. Immediate, not the idle spell: the teacher chose a tool,
+    /// so the toolbar should get out of the way at once.
+    private func hideChrome() {
+        guard !chromeFrozen else { return }
+        hideTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.25)) { chromeVisible = false }
+    }
+
+    /// A finger tap on the page toggles the chrome: bring it up when it's down,
+    /// dismiss it when it's up. A Pencil stroke goes to the canvas, not here, so
+    /// annotating never disturbs it.
+    private func toggleChrome() {
+        if showChrome { hideChrome() } else { revealChrome() }
     }
 
     /// Resolve a tapped lesson block to its body and deal, hand it to the
@@ -140,13 +153,12 @@ struct LessonStageView: View {
         // appeared — the fixture opens in the app's launch task, which races
         // `onAppear`. Switching tabs later reveals and restarts it.
         .onChange(of: session.selectedTabID, initial: true) { _, _ in revealChrome() }
-        // Picking a tool means you're about to draw — hide the chrome promptly
-        // rather than lingering the full idle spell. Also keep the canvases'
-        // tool in sync with the session, so a Pencil double-tap that changes
-        // the tool reaches the pages too.
+        // Keep the canvases' tool in sync with the session, so a Pencil
+        // double-tap that changes the tool reaches the pages too. Dismissing
+        // the chrome on a tool pick is the palette's job (its onSelect), so a
+        // Pencil double-tap — which isn't a menu selection — leaves it be.
         .onChange(of: session.tool) { _, _ in
             pdfHost.canvases.tool = session.tool
-            if showChrome { scheduleChromeHide(after: chromeQuickHide) }
         }
         #if DEBUG
         // Toggle the Contract 5 x-ray overlay live on the current document.
@@ -190,9 +202,9 @@ struct LessonStageView: View {
                         onBlockTap: { index in openPopout(forBlock: index, in: tab) }
                     )
                     .ignoresSafeArea(edges: showChrome ? [] : .all)
-                    // A finger tap reveals the chrome; runs alongside the PDF's
+                    // A finger tap toggles the chrome; runs alongside the PDF's
                     // own scroll/zoom/draw rather than blocking them.
-                    .simultaneousGesture(TapGesture().onEnded { revealChrome() })
+                    .simultaneousGesture(TapGesture().onEnded { toggleChrome() })
 
                     if let failure = tab.loadFailure {
                         Text(failure)
@@ -215,7 +227,7 @@ struct LessonStageView: View {
 
                     if tab.loadFailure == nil, showChrome {
                         VStack(spacing: 10) {
-                            DrawingPalette(host: pdfHost, drawings: tab.drawings)
+                            DrawingPalette(host: pdfHost, drawings: tab.drawings, onSelect: hideChrome)
                             ReadingControls(tab: tab)
                         }
                         .transition(.move(edge: .bottom).combined(with: .opacity))

@@ -1,29 +1,51 @@
 import XCTest
 
-/// Chrome auto-hide for projection: the tab strip and controls fade after an
-/// idle spell so the projector shows a clean page, and a tap brings them back.
-/// `-fastChrome` shortens the idle so this runs without a real wait.
+/// Chrome auto-hide for projection, plus the manual dismiss the teacher drives:
+/// the tab strip and toolbar fade after an idle spell so the projector shows a
+/// clean page; a finger tap toggles them; and picking a tool dismisses them at
+/// once (undo excepted). `-fastChrome` shortens the idle so this runs without a
+/// real wait — and, unlike `-noAutoHide`, leaves the dismiss behaviour active.
 final class AutoHideChromeUITests: LessonStageUITestCase {
-    func testChromeHidesWhenIdleAndRevealsOnTap() {
+    func testChromeTogglesOnTapAndAutoHides() {
         let app = launchWithFixtures(extraArguments: ["-fastChrome"])
         let pdf = app.otherElements["pdfView"]
         XCTAssertTrue(pdf.waitForExistence(timeout: 10))
         let firstTab = tab("lesson-a")
 
-        // Tap to reveal — this starts the idle window under the test's control,
-        // rather than racing the launch, which eats the initial window.
-        pdf.tap()
-        XCTAssertTrue(firstTab.waitForExistence(timeout: 3), "A tap reveals the chrome")
+        // Starts revealed, then fades on its own after the idle spell.
+        XCTAssertTrue(waitForDisappearance(of: firstTab, timeout: 6), "The chrome auto-hides when idle")
 
-        // Left idle, the chrome fades on its own.
-        XCTAssertTrue(
-            waitForDisappearance(of: firstTab, timeout: 6),
-            "The chrome should auto-hide after the idle spell"
-        )
-
-        // And a tap brings it back again.
+        // Hidden → a tap brings it back.
         pdf.tap()
-        XCTAssertTrue(firstTab.waitForExistence(timeout: 3), "A tap reveals it again")
+        XCTAssertTrue(firstTab.waitForExistence(timeout: 3), "A tap reveals the hidden chrome")
+
+        // Visible → a tap dismisses it, and faster than the idle spell would.
+        pdf.tap()
+        XCTAssertTrue(waitForDisappearance(of: firstTab, timeout: 2), "A tap dismisses the visible chrome")
+    }
+
+    func testSelectingAToolDismissesTheChrome() {
+        let app = launchWithFixtures(extraArguments: ["-fastChrome"])
+        XCTAssertTrue(app.otherElements["pdfView"].waitForExistence(timeout: 10))
+        let firstTab = tab("lesson-a")
+
+        // The toolbar is up at launch; pick a tool inside that window. It gets
+        // out of the way at once — sooner than the idle spell (2.5s) would.
+        XCTAssertTrue(firstTab.waitForExistence(timeout: 5), "Precondition: toolbar up at launch")
+        app.buttons["tool-Yellow highlighter"].tap()
+        XCTAssertTrue(waitForDisappearance(of: firstTab, timeout: 2), "Picking a tool dismisses the toolbar")
+    }
+
+    func testUndoKeepsTheChromeUp() {
+        let app = launchWithFixtures(extraArguments: ["-fastChrome"])
+        XCTAssertTrue(app.otherElements["pdfView"].waitForExistence(timeout: 10))
+        let firstTab = tab("lesson-a")
+
+        XCTAssertTrue(firstTab.waitForExistence(timeout: 5), "Precondition: toolbar up at launch")
+        // Undo is the exception: repeated undos are expected, so it must not pull
+        // the toolbar away. Checked at once, before the idle spell elapses.
+        app.buttons["undo"].tap()
+        XCTAssertTrue(firstTab.exists, "Undo leaves the toolbar up")
     }
 
     func testPencilDrawingDoesNotRevealChrome() {
