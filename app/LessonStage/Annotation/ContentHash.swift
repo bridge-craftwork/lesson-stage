@@ -21,4 +21,11 @@ enum ContentHash {
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
+
+    /// Hash bytes already in memory — used when the document is read as `Data`
+    /// (a coordinated read of an iCloud file), so the sidecar key matches the
+    /// content actually opened.
+    static func sha256(of data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
 }

@@ -134,4 +134,17 @@ final class LessonPayloadTests: XCTestCase {
         let doc = PDFDocument(data: TestPDF.data(pages: 1))!
         XCTAssertNil(LessonPayload.load(from: doc), "A PDF with no attachments falls back to plain-PDF mode")
     }
+
+    /// The app now opens files as `Data` (a coordinated read, for fresh content),
+    /// so the Contract 5 walk must work on a `Data`-backed document, not only a
+    /// URL-backed one.
+    func testPayloadAndBlocksLoadFromADataBackedDocument() throws {
+        let url = Fixtures.url(Fixtures.newMinorForcing)
+        guard let data = try? Data(contentsOf: url) else { throw XCTSkip("Fixture missing at \(url.path)") }
+        let document = try XCTUnwrap(PDFDocument(data: data))
+
+        let payload = try XCTUnwrap(LessonPayload.load(from: document), "documentRef walk works from Data")
+        XCTAssertEqual(payload.map.blocks.count, 4)
+        XCTAssertEqual(LessonBlockLinks.targets(in: document).count, 4, "Link annotations resolve too")
+    }
 }

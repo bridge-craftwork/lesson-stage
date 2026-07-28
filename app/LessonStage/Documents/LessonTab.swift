@@ -107,13 +107,34 @@ final class LessonTab: Identifiable {
         // with "could not open". A local file returns immediately.
         await ensureDownloaded(url)
         return await Task.detached(priority: .userInitiated) {
-            let document = PDFDocument(url: url)
-            let hash = document == nil ? nil : ContentHash.sha256(of: url)
+            // Read the bytes through a file coordinator, exactly as the document
+            // picker does — this is what forces the *current* version of a file
+            // that was regenerated in the folder (a new iCloud version, or a
+            // replaced file at the same path). Reading with a plain
+            // `PDFDocument(url:)` can serve a stale local copy, which is why
+            // re-opening an updated lesson kept showing the old content while
+            // the single-file picker showed the new one.
+            let data = coordinatedRead(url)
+            let document = data.flatMap { PDFDocument(data: $0) }
+            let hash = data.map { ContentHash.sha256(of: $0) }
             // Parse the Contract 5 payload here too, off the main thread — the
             // CGPDF attachment walk and JSON decode should not block the UI.
             let payload = document.flatMap { LessonPayload.load(from: $0) }
             return Loaded(document: document, hash: hash, payload: payload)
         }.value
+    }
+
+    /// Read a file's bytes under `NSFileCoordinator`, so an iCloud item is
+    /// materialised to its latest version before the read — the coordinated
+    /// read the document picker performs, which a direct `PDFDocument(url:)`
+    /// does not. Returns nil if the file cannot be read (opens as a failure).
+    private nonisolated static func coordinatedRead(_ url: URL) -> Data? {
+        var coordinationError: NSError?
+        var data: Data?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { readURL in
+            data = try? Data(contentsOf: readURL)
+        }
+        return data
     }
 
     private static func ensureDownloaded(_ url: URL) async {
