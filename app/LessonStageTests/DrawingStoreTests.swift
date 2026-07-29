@@ -417,4 +417,40 @@ final class HighlightGeometryTests: XCTestCase {
         let rect = CGRect(x: 50, y: 100, width: 200, height: 16)
         XCTAssertEqual(HighlightFactory.deoverlap([rect]), [rect])
     }
+
+    /// Marking the same span twice must collapse to one rect, not two stacked
+    /// quads that darken where they meet.
+    func testSameLineRectsMergeToOne() {
+        let first = CGRect(x: 50, y: 100, width: 120, height: 16)
+        let again = CGRect(x: 50, y: 100, width: 120, height: 16)
+
+        let result = HighlightFactory.mergeRects([first, again])
+
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result[0], first)
+    }
+
+    /// A second highlight that starts inside the first and runs past its end
+    /// merges into one rect spanning both, so no seam and no over-dark overlap.
+    func testOverlappingSameLineRectsUnionTheirSpan() {
+        let left = CGRect(x: 50, y: 100, width: 100, height: 16)   // x 50–150
+        let right = CGRect(x: 120, y: 100, width: 100, height: 16) // x 120–220
+
+        let result = HighlightFactory.mergeRects([left, right])
+
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result[0].minX, 50, accuracy: 0.01)
+        XCTAssertEqual(result[0].maxX, 220, accuracy: 0.01)
+    }
+
+    /// Different lines and different columns are still kept apart after merging.
+    func testMergeKeepsSeparateLinesAndColumnsApart() {
+        let line1 = CGRect(x: 50, y: 100, width: 120, height: 16)
+        let line2 = CGRect(x: 50, y: 70, width: 120, height: 16)   // clearly below
+        let column2 = CGRect(x: 300, y: 100, width: 120, height: 16)
+
+        let result = HighlightFactory.mergeRects([line1, line2, column2])
+
+        XCTAssertEqual(result.count, 3)
+    }
 }

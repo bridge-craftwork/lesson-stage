@@ -116,6 +116,13 @@ struct LessonStageView: View {
                         )
                         Divider()
                     }
+                    // Carry the strip's surface up through the status-bar band.
+                    // The page is edge-to-edge and no longer insets for the safe
+                    // area (so it can't jump when the status bar toggles), which
+                    // left the white page showing above the strip. This backs
+                    // the status bar with the tab surface instead — the content
+                    // stays below the bar; only the colour fills up behind it.
+                    .background(Color.tabStripSurface.ignoresSafeArea(edges: .top))
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }

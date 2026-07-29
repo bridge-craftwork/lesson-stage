@@ -63,6 +63,11 @@ struct TabStrip: View {
                     Spacer(minLength: 0)
                 }
             }
+            // A horizontal scroll view fills whatever height it is offered. In
+            // the floating top overlay that offer is unbounded, so without this
+            // it grew past the 44pt strip and dragged the selected tab's fill up
+            // behind the status bar — the "tall tabs". Bound it to the strip.
+            .frame(height: 44)
 
             Divider()
 
@@ -95,6 +100,9 @@ struct TabStrip: View {
         // tab row. An opaque strip also keeps tab titles legible over a white
         // page, which is what is actually behind it.
         .background(Color.tabStripSurface)
+        // Clip to the 44pt frame so nothing inside — a selected tab's fill, the
+        // scroller — can paint outside the strip and into the status bar.
+        .clipped()
     }
 }
 

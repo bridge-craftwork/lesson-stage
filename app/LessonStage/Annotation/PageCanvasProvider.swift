@@ -86,11 +86,11 @@ final class PageCanvasProvider: NSObject {
     /// undo stack to consult.
     private(set) var lastEditedPage: Int?
 
-    /// The highlight annotation shown while a selection is being dragged, and
-    /// the page it sits on. Removed and rebuilt on each move; the same colour
-    /// as the committed highlight, so what you drag is what you get.
-    private var liveAnnotation: PDFAnnotation?
-    private weak var livePage: PDFPage?
+    /// The page a selection is currently being dragged on, if any. The live
+    /// highlight is rendered together with that page's committed highlights (see
+    /// `renderHighlights`), so dragging back over already-marked text stays one
+    /// level of colour rather than doubling.
+    private var liveHighlightPage: Int?
 
 
     func undo() {
@@ -133,12 +133,8 @@ final class PageCanvasProvider: NSObject {
             canvas.drawing = drawings.drawing(forPage: index)
         }
         // Highlights: redraw every page that had, or now has, any.
-        if let document = pdfView?.document {
-            let touched = Set(previous.highlights.keys).union(contents.highlights.keys)
-            for index in touched {
-                if let page = document.page(at: index) { rerenderHighlights(on: page, index: index) }
-            }
-        }
+        let touched = Set(previous.highlights.keys).union(contents.highlights.keys)
+        for index in touched { renderHighlights(onPage: index) }
 
         // One undo restores the whole prior state.
         undoManagerForClearing?.registerUndo(withTarget: self) { provider in
@@ -170,11 +166,40 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
         // the pdfView reference is not yet available when the canvas is built.
         (overlayView as? PageCanvasView)?.hostPDFView = pdfView
         enableInteraction(from: overlayView, upTo: pdfView)
+        pinScrollContentToSafeArea(in: pdfView)
         applyTouchRouting()
 
         #if DEBUG
         if let canvas = overlayView as? PKCanvasView { logCanvasPlacement(canvas) }
         #endif
+    }
+
+    /// Stop PDFKit's scroll view from insetting its content for the safe area.
+    ///
+    /// The page is drawn edge-to-edge with the tab strip and toolbar floating
+    /// over it, so the chrome can show and hide without moving it. But PDFKit's
+    /// internal scroll view defaults to adjusting its content inset for the safe
+    /// area, and the status bar hides and shows with the chrome — so every
+    /// toggle shifted the page (and every canvas on it) up or down by the status
+    /// bar's height, dropping letters onto the wrong row. Pinning the inset to
+    /// `.never` keeps the page still regardless of the status bar.
+    ///
+    /// This is device-only: the simulator's status bar does not change the safe
+    /// area the same way, which is why screenshots there showed the page holding
+    /// position while the classroom iPad did not.
+    private func pinScrollContentToSafeArea(in pdfView: PDFView) {
+        // PDFKit's document scroll view, not a page's canvas (also a scroll
+        // view) — skip those so their own behaviour is untouched.
+        func apply(in view: UIView) {
+            for subview in view.subviews {
+                if subview is PKCanvasView { continue }
+                if let scroll = subview as? UIScrollView {
+                    scroll.contentInsetAdjustmentBehavior = .never
+                }
+                apply(in: subview)
+            }
+        }
+        apply(in: pdfView)
     }
 
     /// Re-enable touch delivery on the views PDFKit parents the overlay under.
@@ -226,7 +251,16 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
 
         let recognizers = Self.recognizers(in: pdfView)
         for recognizer in recognizers {
-            recognizer.allowedTouchTypes = allowed
+            if recognizer is UILongPressGestureRecognizer {
+                // PDFKit's own text-selection recognizer. The app does its own
+                // highlighting through copy mode and never wants the native
+                // blue selection or the system edit menu it raises ("Select
+                // All / Insert Space", the Pencil-Scribble items) — so starve
+                // it of every input type rather than hand it the Pencil.
+                recognizer.allowedTouchTypes = []
+            } else {
+                recognizer.allowedTouchTypes = allowed
+            }
         }
 
         diagnostics?.recordCoalesced(
@@ -334,15 +368,30 @@ extension PageCanvasProvider: CopyModeRouter {
         let pagePoint = pdfView.convert(viewPoint, to: page)
 
         guard drawings?.removeHighlight(atPage: index, containing: pagePoint) == true else { return false }
-        rerenderHighlights(on: page, index: index)
+        renderHighlights(onPage: index)
         lastEditedPage = index
         return true
     }
 
-    /// Remove only the highlight annotations this app added, leaving any the
-    /// lesson shipped with — Contract 5's `lesson-block:` links included.
-    private func removeOwnedHighlightAnnotations(from page: PDFPage) {
-        for annotation in page.annotations where annotation.userName == HighlightFactory.ownerTag {
+    /// Render page `index`'s committed highlights — plus, mid-drag, the one
+    /// growing under the Pencil — as a single merged layer per colour, so
+    /// overlapping or re-marked spans stay one level of colour instead of
+    /// multiplying into a darker band.
+    ///
+    /// The fresh annotations are added *before* the previous ones are removed,
+    /// so the page never flashes empty for a frame. Only this app's own
+    /// highlight annotations are swept; any the lesson shipped with — Contract
+    /// 5's `lesson-block:` links included — are left untouched.
+    private func renderHighlights(onPage index: Int, live: TextHighlight? = nil) {
+        guard let page = pdfView?.document?.page(at: index) else { return }
+        let committed = drawings?.highlights(forPage: index) ?? []
+        let merged = HighlightFactory.mergedAnnotations(for: committed + (live.map { [$0] } ?? []))
+
+        for annotation in merged { page.addAnnotation(annotation) }
+
+        let fresh = Set(merged.map(ObjectIdentifier.init))
+        for annotation in page.annotations
+        where annotation.userName == HighlightFactory.ownerTag && !fresh.contains(ObjectIdentifier(annotation)) {
             page.removeAnnotation(annotation)
         }
     }
@@ -389,34 +438,27 @@ extension PageCanvasProvider: CopyModeRouter {
     func showLiveSelection(_ selection: PDFSelection?) {
         // Draw the live highlight in the tool's colour — the actual highlight
         // growing under the Pencil, so you can see the text you have grabbed.
+        // Rendered together with the page's committed highlights, so dragging
+        // back over already-marked text shows one level, not a darker overlap.
         guard let selection, !(selection.string ?? "").isEmpty,
               case .highlighter(let color) = tool,
               let page = selection.pages.first,
+              let index = pdfView?.document?.index(for: page),
               let highlight = HighlightFactory.make(from: selection, on: page, color: color)
         else {
             clearLiveSelection()
             return
         }
 
-        // Add the new annotation *before* removing the previous, so the page is
-        // never empty for a frame. Remove-then-add can flash: PDFKit may paint
-        // the removal and the addition on separate frames, showing a bare gap
-        // between. This keeps a highlight on screen throughout.
-        let previous = liveAnnotation
-        let previousPage = livePage
-
-        let annotation = HighlightFactory.annotation(for: highlight)
-        page.addAnnotation(annotation)
-        liveAnnotation = annotation
-        livePage = page
-
-        if let previous, let previousPage { previousPage.removeAnnotation(previous) }
+        liveHighlightPage = index
+        renderHighlights(onPage: index, live: highlight)
     }
 
     func clearLiveSelection() {
-        if let liveAnnotation, let livePage { livePage.removeAnnotation(liveAnnotation) }
-        liveAnnotation = nil
-        livePage = nil
+        guard let index = liveHighlightPage else { return }
+        liveHighlightPage = nil
+        // Drop the live overlay and leave only the committed highlights.
+        renderHighlights(onPage: index)
     }
 
     func commitHighlight(_ selection: PDFSelection, onPage index: Int) {
@@ -436,44 +478,26 @@ extension PageCanvasProvider: CopyModeRouter {
     /// PencilKit uses for ink, so the single undo button steps back through ink
     /// and highlights together in the order they were made.
     private func applyHighlight(_ highlight: TextHighlight, onPage index: Int) {
-        guard let page = pdfView?.document?.page(at: index) else { return }
         drawings?.addHighlight(highlight, toPage: index)
-        addAnnotations(for: highlight, to: page)
+        renderHighlights(onPage: index)
         liveCanvases[index]?.undoManager?.registerUndo(withTarget: self) { provider in
             provider.revertHighlight(highlight, onPage: index)
         }
     }
 
     private func revertHighlight(_ highlight: TextHighlight, onPage index: Int) {
-        guard let page = pdfView?.document?.page(at: index) else { return }
         drawings?.removeHighlight(id: highlight.id, fromPage: index)
-        rerenderHighlights(on: page, index: index)
+        renderHighlights(onPage: index)
         liveCanvases[index]?.undoManager?.registerUndo(withTarget: self) { provider in
             provider.applyHighlight(highlight, onPage: index)
         }
     }
 
-    private func addAnnotations(for highlight: TextHighlight, to page: PDFPage) {
-        page.addAnnotation(HighlightFactory.annotation(for: highlight))
-    }
-
-    /// Redraw a page's highlight annotations from the model — the model is the
-    /// source of truth.
-    private func rerenderHighlights(on page: PDFPage, index: Int) {
-        removeOwnedHighlightAnnotations(from: page)
-        for highlight in drawings?.highlights(forPage: index) ?? [] {
-            addAnnotations(for: highlight, to: page)
-        }
-    }
-
     /// Restore a document's saved highlights as annotations when it loads.
     func applyStoredHighlights() {
-        guard let document = pdfView?.document, let drawings else { return }
-        for (index, highlights) in drawings.highlights {
-            guard let page = document.page(at: index) else { continue }
-            for highlight in highlights {
-                addAnnotations(for: highlight, to: page)
-            }
+        guard let drawings else { return }
+        for index in drawings.highlights.keys {
+            renderHighlights(onPage: index)
         }
     }
 }

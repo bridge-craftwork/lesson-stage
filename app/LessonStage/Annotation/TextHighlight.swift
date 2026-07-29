@@ -69,6 +69,47 @@ enum HighlightFactory {
         a.minX < b.maxX && b.minX < a.maxX
     }
 
+    /// Collapse rects that cover the same line of text into one, so a span
+    /// highlighted twice — or two highlights that meet — becomes a single quad
+    /// instead of two translucent ones stacking into a darker band. Rects on
+    /// different lines, or in different columns, stay separate; the vertical
+    /// de-overlap then trims the leading where adjacent lines' boxes touch.
+    static func mergeRects(_ rects: [CGRect]) -> [CGRect] {
+        var lines: [CGRect] = []
+        for rect in rects where rect.width > 1 && rect.height > 1 {
+            if let i = lines.firstIndex(where: { sameLine($0, rect) }) {
+                lines[i] = lines[i].union(rect)
+            } else {
+                lines.append(rect)
+            }
+        }
+        return deoverlap(lines)
+    }
+
+    /// Two rects lie on the same line when they overlap horizontally and share
+    /// most of their height — as opposed to consecutive lines, whose boxes touch
+    /// only by the small leading between them.
+    private static func sameLine(_ a: CGRect, _ b: CGRect) -> Bool {
+        guard horizontallyOverlaps(a, b) else { return false }
+        let overlapY = min(a.maxY, b.maxY) - max(a.minY, b.minY)
+        return overlapY > 0.5 * min(a.height, b.height)
+    }
+
+    /// One merged annotation per colour for a page's highlights.
+    ///
+    /// A `.highlight` annotation multiplies its colour onto the page, so two of
+    /// them over the same text darken where they meet — that is the "keeps
+    /// getting darker" seen when re-marking a span. Merging every same-colour
+    /// highlight into a single de-overlapped annotation makes the multiply
+    /// apply exactly once, so re-marking stays at one level.
+    static func mergedAnnotations(for highlights: [TextHighlight]) -> [PDFAnnotation] {
+        Dictionary(grouping: highlights, by: \.color).compactMap { color, group in
+            let rects = mergeRects(group.flatMap(\.rects))
+            guard !rects.isEmpty else { return nil }
+            return annotation(rects: rects, color: color)
+        }
+    }
+
     /// The single PDF annotation that draws a highlight.
     ///
     /// One annotation with a quad per line, **not** one annotation per line.
