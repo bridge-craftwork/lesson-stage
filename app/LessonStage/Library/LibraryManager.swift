@@ -30,6 +30,23 @@ final class LibraryManager {
     /// The day to highlight — today or the next upcoming class.
     private(set) var anchorID: LessonDay.ID?
 
+    #if DEBUG
+    /// A fixed "today" for tests, so the day-list window is deterministic
+    /// instead of drifting with the wall clock — a fixed-date fixture set falls
+    /// out of the window as real days pass otherwise. Set from
+    /// `-libraryToday <yyyy-MM-dd>`; nil in normal use.
+    var testToday: Date?
+    #endif
+
+    /// The date the day-list window is anchored on: the wall clock, except when
+    /// a test has pinned it.
+    private var referenceToday: Date {
+        #if DEBUG
+        if let testToday { return testToday }
+        #endif
+        return Date()
+    }
+
     /// The in-flight discovery, if any. Enumerating a large iCloud tree is slow,
     /// so it runs off the main thread; this drives a loading state and lets
     /// `settle()` await it.
@@ -116,12 +133,13 @@ final class LibraryManager {
     /// Re-run discovery and windowing against the current root, off the main
     /// thread. Metadata-only, but a deep iCloud tree still takes long enough to
     /// stall the UI if done inline, so it is dispatched and published back.
-    func refresh(today: Date = Date()) {
+    func refresh(today: Date? = nil) {
         guard configuration != nil else {
             days = []
             anchorID = nil
             return
         }
+        let today = today ?? referenceToday
 
         refreshTask?.cancel()
         refreshTask = Task { [weak self] in
@@ -154,6 +172,18 @@ final class LibraryManager {
             return LessonLibrary.window(all, around: today, before: config.windowBefore, after: config.windowAfter)
         }.value
     }
+
+    #if DEBUG
+    /// Parse a `yyyy-MM-dd` launch-argument value into local midnight, for
+    /// pinning the test clock. Returns nil on a malformed value.
+    static func parseTestDate(_ string: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.calendar = .current
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: string)
+    }
+    #endif
 
     // MARK: - Opening a day
 

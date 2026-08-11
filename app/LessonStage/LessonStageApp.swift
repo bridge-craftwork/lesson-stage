@@ -67,6 +67,16 @@ struct LessonStageApp: App {
         session.showsThumbnails = arguments.contains("-thumbnails")
         session.isPresenting = arguments.contains("-present")
 
+        // Pin the day-list window's "today" so it doesn't drift with the wall
+        // clock — a fixed-date fixture set falls out of the window as real days
+        // pass. Set before enabling/configuring, since those trigger the first
+        // refresh. Debug-only, like the rest of this.
+        if let flag = arguments.firstIndex(of: "-libraryToday"),
+           let value = arguments[safe: flag + 1], !value.hasPrefix("-"),
+           let date = LibraryManager.parseTestDate(value) {
+            library.testToday = date
+        }
+
         // The directory picker is a system UI a test cannot drive, so the
         // library root arrives by path — the same reason `-open` exists.
         if arguments.contains("-libraryEnabled") { library.setEnabled(true) }

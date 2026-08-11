@@ -39,7 +39,12 @@ final class LibraryUITests: LessonStageUITestCase {
     }
 
     private func launchWithLibrary() -> XCUIApplication {
-        app.launchArguments = ["-reset", "-noAutoHide", "-libraryEnabled", "-libraryRoot", libraryRoot.path]
+        // Pin the day-list window to the intended test clock, so a fixed-date
+        // fixture set stays inside the window as real calendar days pass.
+        app.launchArguments = [
+            "-reset", "-noAutoHide", "-libraryToday", "2026-07-23",
+            "-libraryEnabled", "-libraryRoot", libraryRoot.path,
+        ]
         app.launch()
         return app
     }
@@ -94,7 +99,14 @@ final class LibraryUITests: LessonStageUITestCase {
         XCTAssertTrue(app.descendants(matching: .any)["librarySheet"].firstMatch.waitForExistence(timeout: 5))
 
         // Every day in the window is listed, including the unplanned one.
-        for day in ["2026-07-16", "2026-07-21", "2026-07-28", "2026-07-30"] {
+        // Discovery runs off the main thread, so wait for the first row before
+        // asserting on the rest — which all render together once the day list
+        // has loaded.
+        XCTAssertTrue(
+            app.descendants(matching: .any)["day-2026-07-16"].firstMatch.waitForExistence(timeout: 5),
+            "2026-07-16 should be in the window"
+        )
+        for day in ["2026-07-21", "2026-07-28", "2026-07-30"] {
             XCTAssertTrue(
                 app.descendants(matching: .any)["day-\(day)"].firstMatch.exists,
                 "\(day) should be in the window"
