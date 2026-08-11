@@ -23,8 +23,11 @@ import os
 /// while zooming, so this never fights an in-progress pinch, and the guard keeps
 /// it from looping on its own writes.
 final class ReadingPDFView: PDFView {
-    /// How far past the fit scale a pinch may go.
-    private let maxZoomOverFit: CGFloat = 8
+    /// How far past the fit scale a pinch may go. Deep on purpose: hand and
+    /// card fragments are vector (the vendored SVG components), so they stay
+    /// crisp all the way in, and reading a card value from the back of the room
+    /// wants the magnification.
+    private let maxZoomOverFit: CGFloat = 16
 
     override func layoutSubviews() {
         super.layoutSubviews()
