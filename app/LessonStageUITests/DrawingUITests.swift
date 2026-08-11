@@ -359,6 +359,34 @@ final class DrawingUITests: LessonStageUITestCase {
         XCTAssertTrue(expect(marks, toRead: "0"), "Undo should take the page back to unmarked")
     }
 
+    /// Marks belong to the document they were made on. Switching tabs must not
+    /// carry one lesson's ink onto another — the classroom-reported bug where
+    /// every open document showed the same marks. Device-only for the same
+    /// reason as the other ink tests: the simulator won't build the stroke.
+    func testMarksDoNotLeakBetweenTabs() throws {
+        try skipUnlessStrokesArePossible()
+        let app = launchDrawing()
+        let marks = annotatedPages(in: app)
+        XCTAssertTrue(marks.waitForExistence(timeout: 10))
+        XCTAssertEqual(marks.label, "0")
+
+        // Mark lesson-a, the tab that opens active.
+        drawStroke(in: app)
+        XCTAssertTrue(expect(marks, toRead: "1"), "Precondition: lesson-a carries a mark")
+
+        // lesson-b must come up clean — its own drawing set, untouched.
+        tab("lesson-b").tap()
+        XCTAssertTrue(
+            expect(marks, toRead: "0"),
+            "A mark made on lesson-a must not appear on lesson-b after a tab switch"
+        )
+
+        // And lesson-a must still have exactly its one mark on return — the
+        // switch neither leaked into b nor lost a's.
+        tab("lesson-a").tap()
+        XCTAssertTrue(expect(marks, toRead: "1"), "lesson-a's own mark must survive the round trip")
+    }
+
     /// The one that matters: a mark must outlive the app that made it.
     func testAStrokeSurvivesRelaunch() throws {
         try skipUnlessStrokesArePossible()

@@ -320,6 +320,16 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
         guard let canvas = overlayView as? PKCanvasView else { return }
         let index = canvas.tag
 
+        // Persist only a canvas we still own for this page. On a tab switch
+        // `reset()` clears the live canvases and `drawings` is swapped to the new
+        // tab *before* the old document's overlays are torn down — so writing an
+        // ending overlay's ink here would land it in the new tab's drawing set,
+        // smearing one lesson's marks onto another (and onto its saved sidecar).
+        // The previous document's strokes are already saved continuously by
+        // `canvasViewDrawingDidChange`, so skipping a canvas we no longer track
+        // loses nothing.
+        guard liveCanvases[index] === canvas else { return }
+
         // Capture before the view goes away: PDFKit recycles overlays as pages
         // leave the viewport, and a stroke made on a page scrolled off screen
         // is otherwise lost.

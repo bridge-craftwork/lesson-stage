@@ -34,6 +34,14 @@ final class PDFViewHost {
         view.autoScales = true
         view.pageShadowsEnabled = true
 
+        // Let a pinch zoom well past the fit scale. `autoScales` sets the fit as
+        // the floor but leaves a low ceiling, so in class the page could not be
+        // magnified enough to read a detail from the back of the room. 5× native
+        // is roughly double the previous limit. Set alongside `autoScales`, and
+        // re-applied after each document lays out (see `updateUIView`), since
+        // fitting a new document can otherwise pull the ceiling back down.
+        view.maxScaleFactor = 5.0
+
         // The surround the page floats in — dark, so a projector doesn't wash
         // the page out with a bright frame around it.
         view.backgroundColor = UIColor(Color.presentationSurround)
@@ -144,6 +152,9 @@ struct PDFDocumentView: UIViewRepresentable {
         Task { @MainActor in
             view.layoutIfNeeded()
             view.autoScales = true
+            // Fitting the new document recomputes the scale limits; restore the
+            // raised pinch ceiling so zoom stays generous on every tab.
+            view.maxScaleFactor = 5.0
             coordinator.restore(pageIndex: pageIndex, in: view)
             // Draw the saved highlights back onto the pages. Deferred with the
             // rest until layout, since it addresses pages by index.
