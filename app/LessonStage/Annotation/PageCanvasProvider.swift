@@ -294,22 +294,21 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
             node = current.superview
         }
 
-        // The full placement dump only when something is wrong. Emitting it
-        // per page buries the touch and stroke lines — which are what you are
-        // usually watching — under repetitions of identical, healthy state.
-        let message: String
-        if let blocked {
-            message = """
-                canvas placement: page \(canvas.tag) BLOCKED BY \(blocked) \
-                policy=\(canvas.drawingPolicy.rawValue) \
-                enabled=\(canvas.isUserInteractionEnabled) \
-                frame=\(canvas.frame) \
-                hidden=\(canvas.isHidden) alpha=\(canvas.alpha) \
-                ancestry=\(ancestry.joined(separator: " < "))
-                """
-        } else {
-            message = "canvas attached — page \(canvas.tag), interaction ok, policy=\(canvas.drawingPolicy.rawValue)"
-        }
+        // Report only the broken case. PDFKit re-attaches a page's overlay
+        // every time it recycles during scroll and zoom, so logging each healthy
+        // attachment floods the panel and Console — dozens of identical "canvas
+        // attached" lines while pinching — and buries the touch and stroke lines
+        // that actually matter. A healthy canvas is confirmed by those instead.
+        guard let blocked else { return }
+
+        let message = """
+            canvas placement: page \(canvas.tag) BLOCKED BY \(blocked) \
+            policy=\(canvas.drawingPolicy.rawValue) \
+            enabled=\(canvas.isUserInteractionEnabled) \
+            frame=\(canvas.frame) \
+            hidden=\(canvas.isHidden) alpha=\(canvas.alpha) \
+            ancestry=\(ancestry.joined(separator: " < "))
+            """
 
         Self.logger.debug("\(message, privacy: .public)")
         diagnostics?.recordCoalesced(message)

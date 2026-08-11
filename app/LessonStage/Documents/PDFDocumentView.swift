@@ -12,6 +12,29 @@ import os
 /// `PDFThumbnailView` is driven by a `PDFView` instance, not by a document,
 /// so the sidebar needs this same object — which is why it lives here rather
 /// than inside the representable.
+/// A `PDFView` that keeps its pinch ceiling a fixed multiple of the *fit* scale.
+///
+/// `autoScales` pins the fit as the floor but leaves a low ceiling, so the page
+/// could not be magnified enough to read a detail from the back of the room. A
+/// multiple of the fit — rather than an absolute value — keeps the same generous
+/// magnification regardless of how the page fits the screen, which differs by
+/// orientation (the projector is always landscape) and page size. Re-asserting
+/// in `layoutSubviews` keeps it right across rotation; the fit does not change
+/// while zooming, so this never fights an in-progress pinch, and the guard keeps
+/// it from looping on its own writes.
+final class ReadingPDFView: PDFView {
+    /// How far past the fit scale a pinch may go.
+    private let maxZoomOverFit: CGFloat = 8
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let fit = scaleFactorForSizeToFit
+        guard fit > 0 else { return }
+        let ceiling = fit * maxZoomOverFit
+        if abs(maxScaleFactor - ceiling) > 0.01 { maxScaleFactor = ceiling }
+    }
+}
+
 @MainActor
 final class PDFViewHost {
     let pdfView: PDFView
@@ -25,7 +48,10 @@ final class PDFViewHost {
     let pencilToggle = PencilToggleController()
 
     init() {
-        let view = PDFView()
+        // `ReadingPDFView` keeps the pinch ceiling a generous multiple of the
+        // fit scale, re-asserted on every layout so it is right in any
+        // orientation — the projector is always landscape.
+        let view = ReadingPDFView()
 
         // Continuous vertical scroll: a lesson is read as a strip, not paged
         // through like a book.
@@ -33,14 +59,6 @@ final class PDFViewHost {
         view.displayDirection = .vertical
         view.autoScales = true
         view.pageShadowsEnabled = true
-
-        // Let a pinch zoom well past the fit scale. `autoScales` sets the fit as
-        // the floor but leaves a low ceiling, so in class the page could not be
-        // magnified enough to read a detail from the back of the room. 5× native
-        // is roughly double the previous limit. Set alongside `autoScales`, and
-        // re-applied after each document lays out (see `updateUIView`), since
-        // fitting a new document can otherwise pull the ceiling back down.
-        view.maxScaleFactor = 5.0
 
         // The surround the page floats in — dark, so a projector doesn't wash
         // the page out with a bright frame around it.
@@ -152,9 +170,8 @@ struct PDFDocumentView: UIViewRepresentable {
         Task { @MainActor in
             view.layoutIfNeeded()
             view.autoScales = true
-            // Fitting the new document recomputes the scale limits; restore the
-            // raised pinch ceiling so zoom stays generous on every tab.
-            view.maxScaleFactor = 5.0
+            // The pinch ceiling is maintained by `ReadingPDFView.layoutSubviews`,
+            // relative to the fit scale, so it needs nothing here.
             coordinator.restore(pageIndex: pageIndex, in: view)
             // Draw the saved highlights back onto the pages. Deferred with the
             // rest until layout, since it addresses pages by index.
