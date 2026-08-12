@@ -17,6 +17,25 @@ final class PageCanvasView: PKCanvasView {
     /// to a plain `super` call.
     weak var diagnostics: CanvasDiagnostics?
 
+    /// Refuse PencilKit's stroke-editing menu.
+    ///
+    /// Once the page has ink, a tap on the canvas pops PencilKit's own edit menu
+    /// — "Select All" and "Insert Space" (which drops a blue divider across the
+    /// page). The app drives everything from its own palette and never wants it,
+    /// so reject the `UIEditMenuInteraction` PencilKit installs to present it.
+    /// Drawing, erasing, and the app's own gestures don't depend on that
+    /// interaction, so nothing is lost.
+    override func addInteraction(_ interaction: UIInteraction) {
+        if interaction is UIEditMenuInteraction { return }
+        super.addInteraction(interaction)
+    }
+
+    /// Backstop for the older `UIMenuController` path: with no performable
+    /// actions, the menu has nothing to show.
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        false
+    }
+
     /// Supplies the page's text layout and receives committed highlights.
     /// Weak: the provider owns this view, not the other way round.
     weak var router: (any CopyModeRouter)?
