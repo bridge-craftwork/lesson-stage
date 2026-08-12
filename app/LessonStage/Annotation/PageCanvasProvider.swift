@@ -22,8 +22,27 @@ final class PageCanvasProvider: NSObject {
     var tool: DrawingTool = .pen(.black) {
         didSet {
             guard tool != oldValue else { return }
+            if case .highlighter(let color) = tool { lastHighlighterColor = color }
             for canvas in liveCanvases.values { apply(tool, to: canvas) }
         }
+    }
+
+    /// The highlighter tint to fall back to when the smart hold-to-highlight
+    /// gesture fires in pen mode — the last one the teacher actually chose.
+    private var lastHighlighterColor: PenColor = .yellow
+
+    /// While the smart hold-to-highlight gesture is running in pen mode, the
+    /// colour to highlight with. Non-nil overrides the tool's own colour so the
+    /// live and committed highlight render even though the tool is a pen.
+    private var smartHighlightColor: PenColor?
+
+    /// The colour a highlight should use right now: the smart-gesture override
+    /// if one is running, otherwise the highlighter tool's own colour (nil when
+    /// no highlighter is in play).
+    private var activeHighlightColor: PenColor? {
+        if let smartHighlightColor { return smartHighlightColor }
+        if case .highlighter(let color) = tool { return color }
+        return nil
     }
 
     /// Point a canvas at the current tool, and switch PencilKit's ink off for
@@ -359,6 +378,7 @@ extension PageCanvasProvider: PDFPageOverlayViewProvider {
         // scrolls independently detaches the ink from the page under it.
         canvas.isScrollEnabled = false
         canvas.accessibilityIdentifier = "pageCanvas"
+        canvas.installSmartHighlightGesture()
         return canvas
     }
 }
@@ -370,6 +390,22 @@ extension PageCanvasProvider: CopyModeRouter {
     }
 
     var isEraserActive: Bool { tool == .eraser }
+
+    var isPenActive: Bool {
+        if case .pen = tool { return true }
+        return false
+    }
+
+    /// Enter the smart hold-to-highlight gesture: highlight with the last-used
+    /// highlighter tint even though a pen is selected. The canvas has already
+    /// stopped inking; `endSmartHighlight` restores pen colouring on release.
+    func beginSmartHighlight() {
+        smartHighlightColor = lastHighlighterColor
+    }
+
+    func endSmartHighlight() {
+        smartHighlightColor = nil
+    }
 
     func eraseHighlight(at viewPoint: CGPoint) -> Bool {
         guard let pdfView, let page = pdfView.page(for: viewPoint, nearest: true),
@@ -450,7 +486,7 @@ extension PageCanvasProvider: CopyModeRouter {
         // Rendered together with the page's committed highlights, so dragging
         // back over already-marked text shows one level, not a darker overlap.
         guard let selection, !(selection.string ?? "").isEmpty,
-              case .highlighter(let color) = tool,
+              let color = activeHighlightColor,
               let page = selection.pages.first,
               let index = pdfView?.document?.index(for: page),
               let highlight = HighlightFactory.make(from: selection, on: page, color: color)
@@ -472,7 +508,7 @@ extension PageCanvasProvider: CopyModeRouter {
 
     func commitHighlight(_ selection: PDFSelection, onPage index: Int) {
         guard let page = pdfView?.document?.page(at: index),
-              case .highlighter(let color) = tool,
+              let color = activeHighlightColor,
               let highlight = HighlightFactory.make(from: selection, on: page, color: color)
         else { return }
         applyHighlight(highlight, onPage: index)

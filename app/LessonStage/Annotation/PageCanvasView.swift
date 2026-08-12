@@ -42,6 +42,11 @@ final class PageCanvasView: PKCanvasView {
     /// in progress — even before any text is under it.
     private var selectionStart: CGPoint?
 
+    /// True while the smart hold-to-highlight gesture is driving a selection in
+    /// pen mode (see `installSmartHighlightGesture`). Distinguishes it from the
+    /// highlighter tool's own copy-mode selection so cleanup can restore inking.
+    private var smartHighlightActive = false
+
     /// Preview throttle. Coalesced touch-moves arrive in floods — a normal
     /// drag fires hundreds — and rebuilding the preview annotation on each one
     /// saturates the main thread, so CoreAnimation never gets a gap to paint
@@ -163,6 +168,91 @@ final class PageCanvasView: PKCanvasView {
         pendingPoint = nil
         lastPreviewTime = 0
         router?.clearLiveSelection()
+
+        // If this was the smart pen-hold highlight, hand the pen back: re-enable
+        // inking and drop the colour override.
+        if smartHighlightActive {
+            smartHighlightActive = false
+            drawingGestureRecognizer.isEnabled = true
+            router?.endSmartHighlight()
+        }
+    }
+
+    // MARK: - Smart hold-to-highlight
+
+    /// A brief press-and-hold on text while a pen is selected highlights instead
+    /// of inking, then hands the pen straight back — the GoodReader-ish shortcut
+    /// for grabbing a phrase without switching tools.
+    ///
+    /// A gesture recognizer, not the touch overrides copy mode uses, because in
+    /// pen mode PencilKit claims the touch immediately to ink it — the view then
+    /// stops seeing the moves. A recognizer gets its own location stream, so the
+    /// selection can be driven even after PencilKit has taken the touch. It is
+    /// pencil-only: a finger in draw mode scrolls the page, and must not trip a
+    /// highlight, and it keeps the gesture out of the finger-driven UI tests.
+    ///
+    /// Fail-safe: if the pencil moves past `allowableMovement` before the hold
+    /// elapses the recognizer fails and inking proceeds untouched, so ordinary
+    /// writing is never disturbed. `cancelsTouchesInView = false` so merely
+    /// observing the touch doesn't cancel the ink — that happens only when a
+    /// hold on text actually wins.
+    func installSmartHighlightGesture() {
+        let hold = UILongPressGestureRecognizer(target: self, action: #selector(handleSmartHold(_:)))
+        hold.minimumPressDuration = 0.18
+        hold.allowableMovement = 10
+        hold.cancelsTouchesInView = false
+        hold.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
+        hold.delegate = self
+        addGestureRecognizer(hold)
+    }
+
+    @objc private func handleSmartHold(_ gesture: UILongPressGestureRecognizer) {
+        guard let router, router.isPenActive else { return }
+        let host = hostPoint(fromGesture: gesture)
+
+        switch gesture.state {
+        case .began:
+            // Only over text — a hold on blank space stays an ordinary pen dot,
+            // so this leaves PencilKit alone in that case.
+            guard let selection = router.initialSelection(at: host) else { return }
+            smartHighlightActive = true
+            // Cancel the stationary ink the hold just started, and stop further
+            // inking for the rest of this gesture.
+            drawingGestureRecognizer.isEnabled = false
+            router.beginSmartHighlight()
+            selectionStart = host
+            activeSelection = selection
+            router.showLiveSelection(activeSelection)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            diagnostics?.record("smart highlight — pen hold on text, page \(tag)")
+
+        case .changed:
+            guard smartHighlightActive, let start = selectionStart else { return }
+            activeSelection = router.selection(from: start, to: host)
+            router.showLiveSelection(activeSelection)
+
+        case .ended:
+            guard smartHighlightActive else { return }
+            if let start = selectionStart {
+                activeSelection = router.selection(from: start, to: host)
+            }
+            commitHighlight() // commits, then `endSelection` restores the pen
+
+        case .cancelled, .failed:
+            guard smartHighlightActive else { return }
+            endSelection()
+
+        default:
+            break
+        }
+    }
+
+    /// A gesture's location translated into the host PDF view's space, matching
+    /// `hostPoint(for:)` but for a recognizer rather than a raw touch.
+    private func hostPoint(fromGesture gesture: UIGestureRecognizer) -> CGPoint {
+        let local = gesture.location(in: self)
+        guard let hostPDFView else { return local }
+        return convert(local, to: hostPDFView)
     }
 
     // MARK: - Diagnostics
@@ -181,6 +271,18 @@ final class PageCanvasView: PKCanvasView {
     }
 }
 
+extension PageCanvasView: UIGestureRecognizerDelegate {
+    /// The smart-hold recognizer must track the pencil alongside PencilKit's own
+    /// drawing recognizer (which has the touch), so it has to recognize
+    /// simultaneously; it stays dormant until a hold on text wins.
+    nonisolated func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+    ) -> Bool {
+        true
+    }
+}
+
 /// What the canvas needs from the page to route a copy-mode stroke, and where
 /// it sends a committed highlight. The provider implements it; the canvas
 /// stays free of PDFKit and of the annotation store.
@@ -191,6 +293,15 @@ protocol CopyModeRouter: AnyObject {
 
     /// The eraser is the active tool.
     var isEraserActive: Bool { get }
+
+    /// A pen (not highlighter, not eraser) is the active tool — the mode the
+    /// smart hold-to-highlight gesture applies in.
+    var isPenActive: Bool { get }
+
+    /// Begin / end a smart hold-to-highlight gesture, which highlights with the
+    /// last-used tint while a pen is selected, then restores pen colouring.
+    func beginSmartHighlight()
+    func endSmartHighlight()
 
     /// Remove a highlight under a point in PDF-view space. Returns whether one
     /// was there.
