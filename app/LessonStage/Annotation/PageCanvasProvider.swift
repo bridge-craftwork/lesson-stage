@@ -544,23 +544,37 @@ extension PageCanvasProvider: CopyModeRouter {
     }
 
     func canTapHighlight(at viewPoint: CGPoint) -> Bool {
-        highlightExists(at: viewPoint) || initialSelection(at: viewPoint) != nil
+        highlightExists(at: viewPoint) || tappedWord(at: viewPoint) != nil
     }
 
     func startOrRotateHighlight(at viewPoint: CGPoint) -> Bool {
         // On an existing highlight → rotate its colour.
         if rotateHighlightColor(at: viewPoint) { return true }
 
-        // Otherwise, if the tap landed on a character, start a highlight on it in
-        // the first tint — the beginning of the rotation.
-        guard let pdfView, let page = pdfView.page(for: viewPoint, nearest: true),
-              let index = pdfView.document?.index(for: page),
-              let selection = initialSelection(at: viewPoint),
+        // Otherwise, if the tap landed on a word, start a highlight on it in the
+        // first tint — the beginning of the rotation.
+        guard let (page, index, selection) = tappedWord(at: viewPoint),
               let highlight = HighlightFactory.make(from: selection, on: page, color: PenColor.highlighterCases[0])
         else { return false }
+        diagnostics?.record("tap-highlight '\(selection.string ?? "")' — page \(index)")
         applyHighlightEdit(add: [highlight], remove: [], onPage: index)
         lastEditedPage = index
         return true
+    }
+
+    /// The word under a point in PDF-view space — via PDFKit's own word
+    /// hit-test, the same family as the drag selection that lands accurately,
+    /// rather than `characterIndex(at:)`, which was picking a glyph well left of
+    /// the tap. Guarded so a tap in a margin doesn't grab the nearest word: the
+    /// point must actually fall within the word's bounds (with a little slack).
+    private func tappedWord(at viewPoint: CGPoint) -> (page: PDFPage, index: Int, selection: PDFSelection)? {
+        guard let pdfView, let page = pdfView.page(for: viewPoint, nearest: true),
+              let index = pdfView.document?.index(for: page) else { return nil }
+        let pagePoint = pdfView.convert(viewPoint, to: page)
+        guard let selection = page.selectionForWord(at: pagePoint),
+              !(selection.string ?? "").trimmingCharacters(in: .whitespaces).isEmpty,
+              selection.bounds(for: page).insetBy(dx: -2, dy: -2).contains(pagePoint) else { return nil }
+        return (page, index, selection)
     }
 
     func rotateHighlightColor(at viewPoint: CGPoint) -> Bool {
