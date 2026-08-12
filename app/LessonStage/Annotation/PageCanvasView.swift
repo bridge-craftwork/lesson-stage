@@ -51,6 +51,13 @@ final class PageCanvasView: PKCanvasView {
     /// from the others when deciding which touches it may receive.
     private var tapRotateGesture: UITapGestureRecognizer?
 
+    /// The tap's touch-down point, in host PDF-view space, captured when the
+    /// recognizer accepts the touch. Used instead of the recognizer's own
+    /// location at fire time: PDFKit can re-lay-out the overlay between down and
+    /// fire at high zoom, which shifts the gesture's measured location — the
+    /// cause of a single-character tap landing well left of the tap.
+    private var pendingTapHost: CGPoint?
+
     /// Preview throttle. Coalesced touch-moves arrive in floods — a normal
     /// drag fires hundreds — and rebuilding the preview annotation on each one
     /// saturates the main thread, so CoreAnimation never gets a gap to paint
@@ -248,7 +255,10 @@ final class PageCanvasView: PKCanvasView {
 
     @objc private func handleHighlightTap(_ gesture: UITapGestureRecognizer) {
         guard let router, router.isPenActive else { return }
-        if router.startOrRotateHighlight(at: hostPoint(fromGesture: gesture)) {
+        // Prefer the point captured at touch-down (see `pendingTapHost`).
+        let host = pendingTapHost ?? hostPoint(fromGesture: gesture)
+        pendingTapHost = nil
+        if router.startOrRotateHighlight(at: host) {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             diagnostics?.record("smart highlight tap — page \(tag)")
         }
@@ -341,7 +351,13 @@ extension PageCanvasView: UIGestureRecognizerDelegate {
         MainActor.assumeIsolated {
             guard gestureRecognizer === tapRotateGesture else { return true }
             guard let router, router.isPenActive, touch.type == .pencil else { return false }
-            return router.canTapHighlight(at: hostPoint(for: touch))
+            // Measure — and remember — the point now, at touch-down, so the tap
+            // handler doesn't have to trust the recognizer's location after a
+            // possible re-layout.
+            let host = hostPoint(for: touch)
+            guard router.canTapHighlight(at: host) else { return false }
+            pendingTapHost = host
+            return true
         }
     }
 }
