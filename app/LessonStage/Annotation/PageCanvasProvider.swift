@@ -613,6 +613,9 @@ extension PageCanvasProvider: CopyModeRouter {
 extension PageCanvasProvider: PKCanvasViewDelegate {
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
         let index = canvasView.tag
+        // Ink just appeared or changed — the condition under which PencilKit's
+        // stroke-edit menu becomes reachable — so strip its interaction now too.
+        (canvasView as? PageCanvasView)?.stripEditMenuInteractions()
         drawings?.update(canvasView.drawing, forPage: index)
         if !canvasView.drawing.strokes.isEmpty { lastEditedPage = index }
         if !canvasView.drawing.strokes.isEmpty {
