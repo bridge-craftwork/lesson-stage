@@ -536,11 +536,31 @@ extension PageCanvasProvider: CopyModeRouter {
         }
     }
 
-    func highlightExists(at viewPoint: CGPoint) -> Bool {
+    private func highlightExists(at viewPoint: CGPoint) -> Bool {
         guard let pdfView, let page = pdfView.page(for: viewPoint, nearest: true),
               let index = pdfView.document?.index(for: page) else { return false }
         let pagePoint = pdfView.convert(viewPoint, to: page)
         return drawings?.highlights(forPage: index).contains { $0.contains(pagePoint) } ?? false
+    }
+
+    func canTapHighlight(at viewPoint: CGPoint) -> Bool {
+        highlightExists(at: viewPoint) || initialSelection(at: viewPoint) != nil
+    }
+
+    func startOrRotateHighlight(at viewPoint: CGPoint) -> Bool {
+        // On an existing highlight → rotate its colour.
+        if rotateHighlightColor(at: viewPoint) { return true }
+
+        // Otherwise, if the tap landed on a character, start a highlight on it in
+        // the first tint — the beginning of the rotation.
+        guard let pdfView, let page = pdfView.page(for: viewPoint, nearest: true),
+              let index = pdfView.document?.index(for: page),
+              let selection = initialSelection(at: viewPoint),
+              let highlight = HighlightFactory.make(from: selection, on: page, color: PenColor.highlighterCases[0])
+        else { return false }
+        applyHighlightEdit(add: [highlight], remove: [], onPage: index)
+        lastEditedPage = index
+        return true
     }
 
     func rotateHighlightColor(at viewPoint: CGPoint) -> Bool {
