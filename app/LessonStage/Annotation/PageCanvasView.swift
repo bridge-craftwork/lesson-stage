@@ -107,46 +107,24 @@ final class PageCanvasView: PKCanvasView {
     }
 
     /// Remove PencilKit's stroke-edit menu wherever it sits in the canvas
-    /// subtree, and (debug) record where it and the current first responder are.
+    /// subtree.
     ///
-    /// The "Select All / Insert Space" menu is PencilKit's, presented through a
-    /// `UIEditMenuInteraction` it installs — evidently on a private subview, not
-    /// the canvas, since refusing it on the canvas didn't stop it. Sweeping the
-    /// subtree on each touch-down removes it; the debug record pins its host so
-    /// the fix can be aimed precisely from a device (the menu needs real ink,
-    /// which no simulator can make).
+    /// The "Select All / Insert Space" menu (Insert Space drops a blue divider
+    /// across the page) is PencilKit's, presented through a `UIEditMenuInteraction`
+    /// it installs once the page has ink — on a private subview, not the canvas
+    /// itself, which is why refusing it on the canvas didn't stop it. The app
+    /// marks with its own palette and never wants it, so sweep the subtree on
+    /// each touch-down (and when ink changes) and drop any such interaction.
+    /// Confirmed on device to remove the menu; nothing the app uses depends on it.
     func stripEditMenuInteractions() {
-        var removedFrom: [String] = []
         func walk(_ view: UIView) {
             for interaction in view.interactions where interaction is UIEditMenuInteraction {
-                removedFrom.append(String(describing: type(of: view)))
                 view.removeInteraction(interaction)
             }
             view.subviews.forEach(walk)
         }
         walk(self)
-
-        #if DEBUG
-        if !removedFrom.isEmpty {
-            diagnostics?.record("edit-menu removed from: \(removedFrom.joined(separator: ", "))")
-        }
-        if let responder = firstResponderInWindow() {
-            diagnostics?.record("first responder: \(type(of: responder))")
-        }
-        #endif
     }
-
-    #if DEBUG
-    private func firstResponderInWindow() -> UIResponder? {
-        func find(_ view: UIView) -> UIView? {
-            if view.isFirstResponder { return view }
-            for sub in view.subviews { if let hit = find(sub) { return hit } }
-            return nil
-        }
-        guard let window else { return nil }
-        return find(window)
-    }
-    #endif
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         report(touches, phase: "moved")
