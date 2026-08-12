@@ -15,7 +15,8 @@ enum DrawingTool: Equatable, Hashable, CaseIterable {
 
     static var allCases: [DrawingTool] {
         PenColor.penCases.map(DrawingTool.pen)
-            + [.highlighter(.yellow), .eraser]
+            + PenColor.highlighterCases.map(DrawingTool.highlighter)
+            + [.eraser]
     }
 
     var pkTool: PKTool {
@@ -62,13 +63,25 @@ enum DrawingTool: Equatable, Hashable, CaseIterable {
 }
 
 enum PenColor: String, Equatable, Hashable, CaseIterable {
-    case black, red, blue, yellow
+    case black, red, blue, yellow, orange, lightBlue
 
-    /// Yellow is a highlighter colour, not a pen colour — it is illegible as
-    /// ink on a white lesson page.
+    /// The pen inks. Yellow/orange/light-blue are highlighter colours, not pen
+    /// colours — they are illegible as ink on a white lesson page.
     static var penCases: [PenColor] { [.black, .red, .blue] }
 
-    var name: String { rawValue.capitalized }
+    /// The highlighter tints, in palette order.
+    static var highlighterCases: [PenColor] { [.yellow, .orange, .lightBlue] }
+
+    var name: String {
+        switch self {
+        case .black: "Black"
+        case .red: "Red"
+        case .blue: "Blue"
+        case .yellow: "Yellow"
+        case .orange: "Orange"
+        case .lightBlue: "Light Blue"
+        }
+    }
 
     var uiColor: UIColor {
         switch self {
@@ -76,6 +89,10 @@ enum PenColor: String, Equatable, Hashable, CaseIterable {
         case .red: UIColor(red: 0.80, green: 0.13, blue: 0.13, alpha: 1)
         case .blue: UIColor(red: 0.11, green: 0.36, blue: 0.78, alpha: 1)
         case .yellow: UIColor(red: 0.98, green: 0.85, blue: 0.20, alpha: 1)
+        // Highlighter tints: the `.highlight` annotation multiplies these onto
+        // the page, so a bright, light base reads as a soft wash over the text.
+        case .orange: UIColor(red: 0.99, green: 0.62, blue: 0.20, alpha: 1)
+        case .lightBlue: UIColor(red: 0.35, green: 0.74, blue: 0.96, alpha: 1)
         }
     }
 
