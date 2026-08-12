@@ -90,6 +90,16 @@ final class DrawingSet {
         scheduleSave()
     }
 
+    /// Recolour a highlight in place — the tap-to-rotate cycle. Leaves its rects
+    /// (and identity) untouched, so undo can put the previous colour back.
+    func setHighlightColor(id: TextHighlight.ID, onPage index: Int, to color: PenColor) {
+        guard var pageHighlights = highlights[index],
+              let i = pageHighlights.firstIndex(where: { $0.id == id }) else { return }
+        pageHighlights[i].color = color
+        highlights[index] = pageHighlights
+        scheduleSave()
+    }
+
     /// Remove a highlight by identity — the undo of `addHighlight`. Returns
     /// whether it was found.
     @discardableResult

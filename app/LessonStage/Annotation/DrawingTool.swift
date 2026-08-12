@@ -72,6 +72,15 @@ enum PenColor: String, Equatable, Hashable, CaseIterable {
     /// The highlighter tints, in palette order.
     static var highlighterCases: [PenColor] { [.yellow, .orange, .lightBlue] }
 
+    /// The next highlighter tint in the cycle — what tapping an existing
+    /// highlight rotates it to. Wraps, and falls back to the first tint for a
+    /// colour that isn't a highlighter one.
+    static func nextHighlighter(after color: PenColor) -> PenColor {
+        let cycle = highlighterCases
+        guard let i = cycle.firstIndex(of: color) else { return cycle[0] }
+        return cycle[(i + 1) % cycle.count]
+    }
+
     var name: String {
         switch self {
         case .black: "Black"
@@ -88,7 +97,7 @@ enum PenColor: String, Equatable, Hashable, CaseIterable {
         case .black: .black
         case .red: UIColor(red: 0.80, green: 0.13, blue: 0.13, alpha: 1)
         case .blue: UIColor(red: 0.11, green: 0.36, blue: 0.78, alpha: 1)
-        case .yellow: UIColor(red: 0.98, green: 0.85, blue: 0.20, alpha: 1)
+        case .yellow: UIColor(red: 1.0, green: 0.94, blue: 0.32, alpha: 1)
         // Highlighter tints: the `.highlight` annotation multiplies these onto
         // the page, so a bright, light base reads as a soft wash over the text.
         case .orange: UIColor(red: 0.99, green: 0.62, blue: 0.20, alpha: 1)

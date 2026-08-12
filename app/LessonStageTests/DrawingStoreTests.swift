@@ -453,4 +453,20 @@ final class HighlightGeometryTests: XCTestCase {
 
         XCTAssertEqual(result.count, 3)
     }
+
+    func testOverlapDetectsSharedArea() {
+        let a = TextHighlight(rects: [CGRect(x: 50, y: 100, width: 100, height: 16)], color: .yellow)
+        let over = TextHighlight(rects: [CGRect(x: 120, y: 100, width: 100, height: 16)], color: .blue)
+        let apart = TextHighlight(rects: [CGRect(x: 400, y: 100, width: 100, height: 16)], color: .blue)
+
+        XCTAssertTrue(a.overlaps(over), "Highlights sharing area overlap")
+        XCTAssertFalse(a.overlaps(apart), "Highlights that don't touch do not overlap")
+    }
+
+    func testHighlighterColourCycleWrapsInOrder() {
+        XCTAssertEqual(PenColor.nextHighlighter(after: .yellow), .orange)
+        XCTAssertEqual(PenColor.nextHighlighter(after: .orange), .lightBlue)
+        XCTAssertEqual(PenColor.nextHighlighter(after: .lightBlue), .yellow, "The cycle wraps")
+        XCTAssertEqual(PenColor.nextHighlighter(after: .black), .yellow, "A non-highlighter falls back to the first")
+    }
 }

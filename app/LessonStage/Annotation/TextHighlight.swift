@@ -20,6 +20,12 @@ struct TextHighlight: Codable, Equatable, Identifiable {
     func contains(_ point: CGPoint) -> Bool {
         rects.contains { $0.contains(point) }
     }
+
+    /// Whether this highlight covers any of the same area as another — used to
+    /// decide which existing highlight a new one replaces.
+    func overlaps(_ other: TextHighlight) -> Bool {
+        rects.contains { rect in other.rects.contains { $0.intersects(rect) } }
+    }
 }
 
 extension PenColor: Codable {}

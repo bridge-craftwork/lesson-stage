@@ -511,30 +511,52 @@ extension PageCanvasProvider: CopyModeRouter {
               let color = activeHighlightColor,
               let highlight = HighlightFactory.make(from: selection, on: page, color: color)
         else { return }
-        applyHighlight(highlight, onPage: index)
+
+        // Replace any *different*-colour highlight this one lands on, so marking
+        // an orange span blue swaps the colour instead of layering a second
+        // wash over it. Same-colour overlaps are left to merge in rendering.
+        let replaced = (drawings?.highlights(forPage: index) ?? [])
+            .filter { $0.color != color && $0.overlaps(highlight) }
+        applyHighlightEdit(add: [highlight], remove: replaced, onPage: index)
         lastEditedPage = index
     }
 
-    /// Add a highlight and register its removal as the undo. Paired with
-    /// `revertHighlight`, which registers this back as the redo — the standard
-    /// symmetric undo pattern.
+    /// Apply a highlight change — remove some, add some — as one undoable step,
+    /// registering the exact inverse so a single undo restores what was there.
     ///
     /// Registered on the committing canvas's undo manager, the same one
     /// PencilKit uses for ink, so the single undo button steps back through ink
     /// and highlights together in the order they were made.
-    private func applyHighlight(_ highlight: TextHighlight, onPage index: Int) {
-        drawings?.addHighlight(highlight, toPage: index)
+    private func applyHighlightEdit(add: [TextHighlight], remove: [TextHighlight], onPage index: Int) {
+        for highlight in remove { drawings?.removeHighlight(id: highlight.id, fromPage: index) }
+        for highlight in add { drawings?.addHighlight(highlight, toPage: index) }
         renderHighlights(onPage: index)
         liveCanvases[index]?.undoManager?.registerUndo(withTarget: self) { provider in
-            provider.revertHighlight(highlight, onPage: index)
+            provider.applyHighlightEdit(add: remove, remove: add, onPage: index)
         }
     }
 
-    private func revertHighlight(_ highlight: TextHighlight, onPage index: Int) {
-        drawings?.removeHighlight(id: highlight.id, fromPage: index)
+    func rotateHighlightColor(at viewPoint: CGPoint) -> Bool {
+        guard let pdfView, let page = pdfView.page(for: viewPoint, nearest: true),
+              let index = pdfView.document?.index(for: page) else { return false }
+        let pagePoint = pdfView.convert(viewPoint, to: page)
+        guard let target = drawings?.highlights(forPage: index).first(where: { $0.contains(pagePoint) }) else {
+            return false
+        }
+        recolorHighlight(id: target.id, onPage: index, to: PenColor.nextHighlighter(after: target.color))
+        lastEditedPage = index
+        return true
+    }
+
+    /// Recolour one highlight and register the inverse, so a tap-to-rotate steps
+    /// back a colour at a time on undo — and never touches the tool's own colour.
+    private func recolorHighlight(id: TextHighlight.ID, onPage index: Int, to color: PenColor) {
+        guard let current = drawings?.highlights(forPage: index).first(where: { $0.id == id }) else { return }
+        let previous = current.color
+        drawings?.setHighlightColor(id: id, onPage: index, to: color)
         renderHighlights(onPage: index)
         liveCanvases[index]?.undoManager?.registerUndo(withTarget: self) { provider in
-            provider.applyHighlight(highlight, onPage: index)
+            provider.recolorHighlight(id: id, onPage: index, to: previous)
         }
     }
 

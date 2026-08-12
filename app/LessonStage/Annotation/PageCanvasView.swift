@@ -56,6 +56,11 @@ final class PageCanvasView: PKCanvasView {
     private var pendingPoint: CGPoint?
     private let previewInterval: CFTimeInterval = 1.0 / 60
 
+    /// A gesture that moves less than this (in PDF-view points) is a tap, not a
+    /// drag — it rotates a tapped highlight's colour rather than laying a new
+    /// highlight down.
+    private static let tapMovementThreshold: CGFloat = 10
+
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         report(touches, phase: "began")
 
@@ -73,7 +78,10 @@ final class PageCanvasView: PKCanvasView {
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         report(touches, phase: "moved")
 
-        if selectionStart != nil, let touch = touches.first {
+        // Skipped while a smart pen-hold highlight is running: that gesture is
+        // driven by its own recognizer, so letting this path also extend the
+        // selection would double-drive it.
+        if selectionStart != nil, !smartHighlightActive, let touch = touches.first {
             extendSelection(to: touch)
             return
         }
@@ -81,13 +89,22 @@ final class PageCanvasView: PKCanvasView {
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if let start = selectionStart {
+        // The smart pen-hold highlight ends on its own recognizer, not here.
+        if let start = selectionStart, !smartHighlightActive {
+            let endPoint = touches.first.map { hostPoint(for: $0) } ?? start
+
+            // A tap, not a drag: rotate the colour of a highlight under it, and
+            // lay down nothing from a stray tap that spanned no real distance.
+            if hypot(endPoint.x - start.x, endPoint.y - start.y) < Self.tapMovementThreshold {
+                _ = router?.rotateHighlightColor(at: endPoint)
+                endSelection()
+                return
+            }
+
             // The final selection uses the actual end point, unthrottled, so a
             // fast flick that skipped every preview frame still commits the
             // full span.
-            if let touch = touches.first {
-                activeSelection = router?.selection(from: start, to: hostPoint(for: touch))
-            }
+            activeSelection = router?.selection(from: start, to: endPoint)
             commitHighlight()
             return
         }
@@ -306,6 +323,11 @@ protocol CopyModeRouter: AnyObject {
     /// Remove a highlight under a point in PDF-view space. Returns whether one
     /// was there.
     func eraseHighlight(at point: CGPoint) -> Bool
+
+    /// Cycle the colour of a highlight under a point (PDF-view space) to the
+    /// next highlighter tint, leaving the tool's own colour alone. Returns
+    /// whether a highlight was there to rotate.
+    func rotateHighlightColor(at point: CGPoint) -> Bool
 
     /// The selection of the single character under a point in PDF-view space,
     /// or nil for whitespace. Non-nil is the whole routing decision *and* the
