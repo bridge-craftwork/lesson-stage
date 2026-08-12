@@ -36,6 +36,15 @@ final class ReadingPDFView: PDFView {
         let ceiling = fit * maxZoomOverFit
         if abs(maxScaleFactor - ceiling) > 0.01 { maxScaleFactor = ceiling }
     }
+
+    /// Refuse every editing action, which empties — and so suppresses — the
+    /// system text-selection / Scribble menu ("Select All", "Insert Space",
+    /// Copy, …) that a stray tap or press on the page's text would otherwise
+    /// raise. The app does its own highlighting through copy mode and never
+    /// wants PDFKit's native selection UI.
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        false
+    }
 }
 
 @MainActor
