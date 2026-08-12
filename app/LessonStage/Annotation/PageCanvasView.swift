@@ -47,6 +47,10 @@ final class PageCanvasView: PKCanvasView {
     /// highlighter tool's own copy-mode selection so cleanup can restore inking.
     private var smartHighlightActive = false
 
+    /// The pen tap-to-rotate recognizer, kept so the delegate can tell it apart
+    /// from the others when deciding which touches it may receive.
+    private var tapRotateGesture: UITapGestureRecognizer?
+
     /// Preview throttle. Coalesced touch-moves arrive in floods — a normal
     /// drag fires hundreds — and rebuilding the preview annotation on each one
     /// saturates the main thread, so CoreAnimation never gets a gap to paint
@@ -221,6 +225,27 @@ final class PageCanvasView: PKCanvasView {
         hold.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
         hold.delegate = self
         addGestureRecognizer(hold)
+
+        // Tap-to-rotate, also on the pen. Pencil-only, and — via the delegate's
+        // `shouldReceive` — it only engages for a tap that lands on an existing
+        // highlight, so ordinary taps are ignored by it. PencilKit's drawing
+        // recognizer is required to fail behind it, so a tap that rotates a
+        // colour never also inks a dot; because the recognizer only takes
+        // highlight-touches, drawing anywhere else is not gated or delayed.
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTapRotate(_:)))
+        tap.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
+        tap.delegate = self
+        addGestureRecognizer(tap)
+        tapRotateGesture = tap
+        drawingGestureRecognizer.require(toFail: tap)
+    }
+
+    @objc private func handleTapRotate(_ gesture: UITapGestureRecognizer) {
+        guard let router, router.isPenActive else { return }
+        if router.rotateHighlightColor(at: hostPoint(fromGesture: gesture)) {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            diagnostics?.record("smart rotate — pen tap on highlight, page \(tag)")
+        }
     }
 
     @objc private func handleSmartHold(_ gesture: UILongPressGestureRecognizer) {
@@ -298,6 +323,21 @@ extension PageCanvasView: UIGestureRecognizerDelegate {
     ) -> Bool {
         true
     }
+
+    /// Gate the tap-to-rotate recognizer to touches that start on a highlight
+    /// while a pen is active. Everything else — and every other recognizer —
+    /// takes its touches as usual, so PencilKit is never made to wait behind the
+    /// tap except where a tap could actually rotate a colour.
+    nonisolated func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldReceive touch: UITouch
+    ) -> Bool {
+        MainActor.assumeIsolated {
+            guard gestureRecognizer === tapRotateGesture else { return true }
+            guard let router, router.isPenActive, touch.type == .pencil else { return false }
+            return router.highlightExists(at: hostPoint(for: touch))
+        }
+    }
 }
 
 /// What the canvas needs from the page to route a copy-mode stroke, and where
@@ -323,6 +363,10 @@ protocol CopyModeRouter: AnyObject {
     /// Remove a highlight under a point in PDF-view space. Returns whether one
     /// was there.
     func eraseHighlight(at point: CGPoint) -> Bool
+
+    /// Whether a highlight sits under a point in PDF-view space — the test that
+    /// decides whether a pen tap should rotate a colour rather than ink.
+    func highlightExists(at point: CGPoint) -> Bool
 
     /// Cycle the colour of a highlight under a point (PDF-view space) to the
     /// next highlighter tint, leaving the tool's own colour alone. Returns

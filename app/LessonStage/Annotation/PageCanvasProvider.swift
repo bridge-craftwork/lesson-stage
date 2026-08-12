@@ -536,6 +536,13 @@ extension PageCanvasProvider: CopyModeRouter {
         }
     }
 
+    func highlightExists(at viewPoint: CGPoint) -> Bool {
+        guard let pdfView, let page = pdfView.page(for: viewPoint, nearest: true),
+              let index = pdfView.document?.index(for: page) else { return false }
+        let pagePoint = pdfView.convert(viewPoint, to: page)
+        return drawings?.highlights(forPage: index).contains { $0.contains(pagePoint) } ?? false
+    }
+
     func rotateHighlightColor(at viewPoint: CGPoint) -> Bool {
         guard let pdfView, let page = pdfView.page(for: viewPoint, nearest: true),
               let index = pdfView.document?.index(for: page) else { return false }
