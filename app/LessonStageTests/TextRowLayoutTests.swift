@@ -134,6 +134,43 @@ final class TextRowLayoutTests: XCTestCase {
                                                        to: CGPoint(x: 90, y: 20)), .noText)
     }
 
+    // MARK: - Deciding whether a pen hold should highlight
+
+    func testAPointAnywhereAlongASuitRowIsOnThatRow() {
+        // Including the spaces between the cards, whose character bounds are
+        // zero-height — the dead patches that stopped the pen switching.
+        var x = hearts.band.minX
+        while x <= hearts.band.maxX {
+            XCTAssertEqual(hand.row(covering: CGPoint(x: x, y: hearts.band.midY))?.band,
+                           hearts.band, "x \(x) should be on the heart row")
+            x += 0.5
+        }
+    }
+
+    func testAHoldJustOffTheEndOfARowIsStillOnIt() {
+        // Forgiving enough to start a hair before the suit symbol.
+        XCTAssertEqual(hand.row(covering: CGPoint(x: hearts.band.minX - 1.5,
+                                                  y: hearts.band.midY))?.band, hearts.band)
+    }
+
+    func testAHoldOutInTheMarginIsOnNoRow() {
+        // Past the heart row's last card, where the spade row above still has
+        // text — a pen dot here must stay ink.
+        XCTAssertNil(hand.row(covering: CGPoint(x: hearts.band.maxX + 8, y: hearts.band.midY)))
+        XCTAssertNil(hand.row(covering: CGPoint(x: hearts.band.minX - 8, y: hearts.band.midY)))
+    }
+
+    func testAHoldOnBlankPaperIsOnNoRow() {
+        XCTAssertNil(hand.row(covering: CGPoint(x: 400, y: 300)))
+        XCTAssertNil(hand.row(covering: CGPoint(x: hearts.band.midX, y: 300)))
+    }
+
+    func testAHoldBetweenTwoRowsTakesTheNearer() {
+        let gap = (hearts.band.maxY + spades.band.minY) / 2
+        XCTAssertEqual(hand.row(covering: CGPoint(x: 150, y: gap - 1))?.band, hearts.band)
+        XCTAssertEqual(hand.row(covering: CGPoint(x: 150, y: gap + 1))?.band, spades.band)
+    }
+
     // MARK: - Pulling a painted highlight back onto the glyphs
 
     func testTightenPullsALineBoxDownOntoItsGlyphs() {
