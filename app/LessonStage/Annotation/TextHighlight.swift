@@ -35,9 +35,16 @@ enum HighlightFactory {
     /// `selectionsByLine` is what keeps a multi-line highlight from becoming
     /// one rect spanning everything between the first and last character —
     /// which on a two-column lesson would paint straight across the gutter.
-    static func make(from selection: PDFSelection, on page: PDFPage, color: PenColor) -> TextHighlight? {
+    ///
+    /// Each line's rect is pulled back onto the glyphs it covers before it is
+    /// used. PDFKit reports a selected line's bounds as its *line box*, which
+    /// comes from the font's metrics: on a bridge hand, whose suit symbols carry
+    /// enormous ascent and descent, that box is more than twice the row pitch,
+    /// and painting it covers the suit above.
+    static func make(from selection: PDFSelection, on page: PDFPage, color: PenColor,
+                     rows: TextRowLayout) -> TextHighlight? {
         let rects = selection.selectionsByLine()
-            .map { $0.bounds(for: page) }
+            .map { rows.tighten($0.bounds(for: page)) }
             .filter { !$0.isEmpty && $0.width > 1 && $0.height > 1 }
 
         guard !rects.isEmpty else { return nil }

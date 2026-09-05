@@ -132,12 +132,15 @@ final class DrawingUITests: LessonStageUITestCase {
         let marks = annotatedPages(in: app)
         XCTAssertTrue(marks.waitForExistence(timeout: 10))
 
-        // Low on the page, below all text in the fixture.
+        // The fixture's bottom margin: below its lowest line of text, and still
+        // clear of the floating palette. `dy` has to satisfy both — at 0.9 this
+        // drag began on the pen buttons, so the page never saw it and the drag
+        // proved nothing.
         let page = app.otherElements["pdfView"]
-        page.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.9))
+        page.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.78))
             .press(
                 forDuration: 0.2,
-                thenDragTo: page.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.9)),
+                thenDragTo: page.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.78)),
                 withVelocity: .slow,
                 thenHoldForDuration: 0.2
             )
