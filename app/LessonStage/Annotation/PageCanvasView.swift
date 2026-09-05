@@ -325,13 +325,16 @@ final class PageCanvasView: PKCanvasView {
             diagnostics?.record("smart highlight — pen hold on text, page \(tag)")
 
         case .changed:
-            guard smartHighlightActive, let start = selectionStart else { return }
+            guard smartHighlightActive, let start = selectionStart, moved(from: start, to: host) else { return }
             activeSelection = router.selection(from: start, to: host)
             router.showLiveSelection(activeSelection)
 
         case .ended:
             guard smartHighlightActive else { return }
-            if let start = selectionStart {
+            // A hold that never travelled keeps the word it started on — a
+            // single card in a suit. Recomputing from two points a hair apart
+            // would span no text and mark nothing.
+            if let start = selectionStart, moved(from: start, to: host) {
                 activeSelection = router.selection(from: start, to: host)
             }
             commitHighlight() // commits, then `endSelection` restores the pen
@@ -343,6 +346,12 @@ final class PageCanvasView: PKCanvasView {
         default:
             break
         }
+    }
+
+    /// Whether a gesture has travelled far enough to be extending a selection
+    /// rather than resting on the spot it started.
+    private func moved(from start: CGPoint, to point: CGPoint) -> Bool {
+        hypot(point.x - start.x, point.y - start.y) >= Self.tapMovementThreshold
     }
 
     /// A gesture's location translated into the host PDF view's space, matching

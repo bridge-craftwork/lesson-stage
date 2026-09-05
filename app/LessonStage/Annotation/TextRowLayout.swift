@@ -39,6 +39,18 @@ struct TextRowLayout {
         let bottom: CGFloat
 
         func isOn(_ y: CGFloat) -> Bool { y >= bottom && y <= top }
+        /// How well this row answers for a point. A row is preferred when the
+        /// point is on its glyphs rather than merely within the slack it reaches
+        /// into the gap; then by vertical nearness; and only then by horizontal
+        /// nearness, which is what separates the two columns of a lesson at the
+        /// same height. The first key matters because a suit symbol inflates its
+        /// row's glyph band — an auction line like "2♠/3♠ Three-card" reaches
+        /// down over the indented line beneath it.
+        func rank(for point: CGPoint) -> (Int, CGFloat, CGFloat) {
+            (coversGlyphs(at: point.y) ? 0 : 1,
+             verticalDistance(to: point.y),
+             horizontalDistance(to: point.x))
+        }
         /// Whether the point is on the row's glyphs themselves, rather than
         /// merely within the slack it reaches into the gap.
         func coversGlyphs(at y: CGFloat) -> Bool { y >= band.minY && y <= band.maxY }
@@ -93,19 +105,8 @@ struct TextRowLayout {
         let reachable = rows.filter { $0.band.minX <= hi && lo <= $0.band.maxX }
         guard !reachable.isEmpty else { return .noText }
 
-        // A row is preferred when the point is on its glyphs rather than merely
-        // within the slack it reaches into the gap; then by vertical nearness;
-        // and only then by horizontal nearness, which is what separates the two
-        // columns of a lesson at the same height. The first key matters because
-        // a suit symbol inflates its row's glyph band — an auction line like
-        // "2♠/3♠ Three-card" reaches down over the indented line beneath it.
-        func rank(_ row: Row, _ point: CGPoint) -> (Int, CGFloat, CGFloat) {
-            (row.coversGlyphs(at: point.y) ? 0 : 1,
-             row.verticalDistance(to: point.y),
-             row.horizontalDistance(to: point.x))
-        }
         func row(at point: CGPoint) -> Row? {
-            reachable.filter { $0.isOn(point.y) }.min { rank($0, point) < rank($1, point) }
+            reachable.filter { $0.isOn(point.y) }.min { $0.rank(for: point) < $1.rank(for: point) }
         }
         let startRow = row(at: start)
         // A drag is presumed to stay on the row it began on, leaving it only
@@ -145,6 +146,29 @@ struct TextRowLayout {
         }
         return .rows(rects.filter { $0.width > 0 })
     }
+
+    /// The row a single point is on, or nil for blank paper.
+    ///
+    /// This is what decides whether a pen hold switches to highlighting, so it
+    /// is deliberately tighter than `target(from:to:)`: the point has to be on
+    /// the row's own text horizontally, not merely at its height, or a hold out
+    /// in the margin would stop inking.
+    ///
+    /// The row is the test rather than `PDFPage.characterIndex(at:)`, which
+    /// answers with the nearest character everywhere on the page and whose
+    /// bounds are *zero height* on the spaces between the cards of a suit — so
+    /// gating on them left dead patches right where a card is being aimed at.
+    func row(covering point: CGPoint) -> Row? {
+        rows.filter {
+            $0.isOn(point.y) && point.x >= $0.band.minX - Self.edgeSlack
+                && point.x <= $0.band.maxX + Self.edgeSlack
+        }
+        .min { $0.rank(for: point) < $1.rank(for: point) }
+    }
+
+    /// How far past the end of a row still counts as being on it — enough to
+    /// forgive starting a hair before the first card or after the last.
+    static let edgeSlack: CGFloat = 2
 
     /// The glyph band for one line of a selection, found by the line box it came
     /// from. Used to pull a highlight's rect back onto the text: PDFKit reports

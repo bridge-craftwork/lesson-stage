@@ -461,24 +461,40 @@ extension PageCanvasProvider: CopyModeRouter {
         guard let pdfView, let page = pdfView.page(for: viewPoint, nearest: true) else { return nil }
         let pagePoint = pdfView.convert(viewPoint, to: page)
 
-        // `characterIndex(at:)` does NOT return -1 for a point off every glyph
-        // — it returns the *nearest* character, so it reports "on text"
-        // everywhere, including the margins. That would route every copy-mode
-        // touch to highlighting and make inking impossible. The real test is
-        // whether that character's bounds actually contain the point.
-        let index = page.characterIndex(at: pagePoint)
-        guard index >= 0 else { return nil }
-
-        let bounds = page.characterBounds(at: index)
-        // A small inset of slack, so a touch just above or below a glyph still
-        // counts as "on the line" — matching the feel of dragging a highlight
-        // along text rather than needing to be dead-centre on the glyph.
-        guard bounds.insetBy(dx: -2, dy: -2).contains(pagePoint) else { return nil }
-
-        // Select that one character, so the drag has visible feedback from the
-        // very first frame rather than only on release.
-        return page.selection(for: NSRange(location: index, length: 1))
+        // Whether there is text here is the row's answer, not
+        // `characterIndex(at:)`'s: that reports the nearest character
+        // everywhere, and the spaces between the cards of a suit have
+        // zero-height bounds, so testing them left dead patches across most of
+        // a suit row — the pen would not switch where a card was being aimed at.
+        guard let row = rowLayout(for: page).row(covering: pagePoint) else { return nil }
+        return word(nearest: pagePoint, on: page, along: row.band)
     }
+
+    /// The word under a point, or the nearest one along its row.
+    ///
+    /// A card in a suit display is a word of its own, a few points wide with a
+    /// space either side, so a hold aimed at one often lands just off it. Rather
+    /// than mark nothing — or switch the pen to highlighting and then mark
+    /// nothing, which leaves the teacher unable to draw — walk out along the row
+    /// and take the card that was being aimed at.
+    private func word(nearest point: CGPoint, on page: PDFPage, along band: CGRect) -> PDFSelection? {
+        let slack = TextRowLayout.edgeSlack
+        for offset in stride(from: 0, through: Self.wordSearchReach, by: 1.5) {
+            for dx in offset == 0 ? [0] : [-offset, offset] {
+                let x = min(max(point.x + dx, band.minX - slack), band.maxX + slack)
+                guard let word = page.selectionForWord(at: CGPoint(x: x, y: point.y)),
+                      !(word.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                else { continue }
+                return word
+            }
+        }
+        return nil
+    }
+
+    /// How far along the row to look for a card. About one card plus the space
+    /// beside it — far enough to forgive the aim, near enough that the card
+    /// found is the one meant.
+    private static let wordSearchReach: CGFloat = 6
 
     func selection(from: CGPoint, to: CGPoint) -> PDFSelection? {
         guard let pdfView,
@@ -600,18 +616,19 @@ extension PageCanvasProvider: CopyModeRouter {
         return true
     }
 
-    /// The word under a point in PDF-view space — via PDFKit's own word
-    /// hit-test, the same family as the drag selection that lands accurately,
-    /// rather than `characterIndex(at:)`, which was picking a glyph well left of
-    /// the tap. Guarded so a tap in a margin doesn't grab the nearest word: the
-    /// point must actually fall within the word's bounds (with a little slack).
+    /// The word a pen tap lands on, for tap-to-highlight.
+    ///
+    /// Resolved the same way a pen hold is, so the two gestures agree about
+    /// where a card is: the tap must land on a row, and it takes the nearest
+    /// card along it. Testing the word's own bounds instead — which is what this
+    /// did — left the same dead patches between the cards of a suit, so a tap
+    /// aimed at a card often did nothing.
     private func tappedWord(at viewPoint: CGPoint) -> (page: PDFPage, index: Int, selection: PDFSelection)? {
         guard let pdfView, let page = pdfView.page(for: viewPoint, nearest: true),
               let index = pdfView.document?.index(for: page) else { return nil }
         let pagePoint = pdfView.convert(viewPoint, to: page)
-        guard let selection = page.selectionForWord(at: pagePoint),
-              !(selection.string ?? "").trimmingCharacters(in: .whitespaces).isEmpty,
-              selection.bounds(for: page).insetBy(dx: -2, dy: -2).contains(pagePoint) else { return nil }
+        guard let row = rowLayout(for: page).row(covering: pagePoint),
+              let selection = word(nearest: pagePoint, on: page, along: row.band) else { return nil }
         return (page, index, selection)
     }
 
