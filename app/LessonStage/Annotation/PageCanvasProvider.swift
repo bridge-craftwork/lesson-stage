@@ -105,6 +105,15 @@ final class PageCanvasProvider: NSObject {
     /// undo stack to consult.
     private(set) var lastEditedPage: Int?
 
+    /// Cached page text layouts, see `rowLayout(for:)`. Dropped with the rest of
+    /// the per-document state when the tab changes.
+    private var rowLayouts: [RowLayoutKey: TextRowLayout] = [:]
+
+    private struct RowLayoutKey: Hashable {
+        let page: ObjectIdentifier
+        let rotation: Int
+    }
+
     /// The page a selection is currently being dragged on, if any. The live
     /// highlight is rendered together with that page's committed highlights (see
     /// `renderHighlights`), so dragging back over already-marked text stays one
@@ -126,6 +135,7 @@ final class PageCanvasProvider: NSObject {
     /// already in the `DrawingSet`; this only releases the views.
     func reset() {
         liveCanvases.removeAll()
+        rowLayouts.removeAll()
         lastEditedPage = nil
     }
 
@@ -474,10 +484,37 @@ extension PageCanvasProvider: CopyModeRouter {
         guard let pdfView,
               let fromPage = pdfView.page(for: from, nearest: true),
               let toPage = pdfView.page(for: to, nearest: true) else { return nil }
-        return pdfView.document?.selection(
-            from: fromPage, at: pdfView.convert(from, to: fromPage),
-            to: toPage, at: pdfView.convert(to, to: toPage)
-        )
+        let start = pdfView.convert(from, to: fromPage)
+        let end = pdfView.convert(to, to: toPage)
+
+        // Across a page break there are no shared rows to reason about, so the
+        // reading-order span is all there is.
+        guard fromPage === toPage else {
+            return pdfView.document?.selection(from: fromPage, at: start, to: toPage, at: end)
+        }
+
+        // Within a page the drag is resolved to rows first, and PDFKit is asked
+        // only for the text inside each row's band — never for a reading-order
+        // span, which on a bridge hand runs from one suit to the next and
+        // sometimes to the far end of the page. See `TextRowLayout`.
+        guard case .rows(let bands) = rowLayout(for: fromPage).target(from: start, to: end) else {
+            return nil
+        }
+        let parts = bands.compactMap { fromPage.selection(for: $0) }
+        guard let combined = parts.first else { return nil }
+        for part in parts.dropFirst() { combined.add(part) }
+        return combined
+    }
+
+    /// A page's text rows, read once and kept. Building one walks the page's
+    /// whole text layout, and a drag re-selects on every frame. Rotation is part
+    /// of the key because turning a page moves every row.
+    private func rowLayout(for page: PDFPage) -> TextRowLayout {
+        let key = RowLayoutKey(page: ObjectIdentifier(page), rotation: page.rotation)
+        if let cached = rowLayouts[key] { return cached }
+        let layout = TextRowLayout(page: page)
+        rowLayouts[key] = layout
+        return layout
     }
 
     func showLiveSelection(_ selection: PDFSelection?) {
@@ -489,7 +526,7 @@ extension PageCanvasProvider: CopyModeRouter {
               let color = activeHighlightColor,
               let page = selection.pages.first,
               let index = pdfView?.document?.index(for: page),
-              let highlight = HighlightFactory.make(from: selection, on: page, color: color)
+              let highlight = HighlightFactory.make(from: selection, on: page, color: color, rows: rowLayout(for: page))
         else {
             clearLiveSelection()
             return
@@ -509,7 +546,7 @@ extension PageCanvasProvider: CopyModeRouter {
     func commitHighlight(_ selection: PDFSelection, onPage index: Int) {
         guard let page = pdfView?.document?.page(at: index),
               let color = activeHighlightColor,
-              let highlight = HighlightFactory.make(from: selection, on: page, color: color)
+              let highlight = HighlightFactory.make(from: selection, on: page, color: color, rows: rowLayout(for: page))
         else { return }
 
         // Replace any *different*-colour highlight this one lands on, so marking
@@ -554,7 +591,8 @@ extension PageCanvasProvider: CopyModeRouter {
         // Otherwise, if the tap landed on a word, start a highlight on it in the
         // first tint — the beginning of the rotation.
         guard let (page, index, selection) = tappedWord(at: viewPoint),
-              let highlight = HighlightFactory.make(from: selection, on: page, color: PenColor.highlighterCases[0])
+              let highlight = HighlightFactory.make(from: selection, on: page, color: PenColor.highlighterCases[0],
+                                                    rows: rowLayout(for: page))
         else { return false }
         diagnostics?.record("tap-highlight '\(selection.string ?? "")' — page \(index)")
         applyHighlightEdit(add: [highlight], remove: [], onPage: index)
