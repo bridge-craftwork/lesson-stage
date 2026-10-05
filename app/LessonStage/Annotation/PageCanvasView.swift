@@ -299,7 +299,6 @@ final class PageCanvasView: PKCanvasView {
         let host = pendingTapHost ?? hostPoint(fromGesture: gesture)
         pendingTapHost = nil
         if router.startOrRotateHighlight(at: host) {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             diagnostics?.record("smart highlight tap — page \(tag)")
         }
     }
@@ -321,7 +320,6 @@ final class PageCanvasView: PKCanvasView {
             selectionStart = host
             activeSelection = selection
             router.showLiveSelection(activeSelection)
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             diagnostics?.record("smart highlight — pen hold on text, page \(tag)")
 
         case .changed:
