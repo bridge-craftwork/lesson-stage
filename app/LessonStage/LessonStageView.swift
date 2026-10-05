@@ -126,6 +126,18 @@ struct LessonStageView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
+            // Bottom-leading: clear of the palette (centred) and the
+            // presentation exit (top-trailing), and on the side a right hand
+            // is not resting over while it writes.
+            .overlay(alignment: .bottomLeading) {
+                if session.isDrawingEnabled, session.selectedTab != nil {
+                    ToolModeBadge(tool: session.tool)
+                        .padding(.leading, 14)
+                        .padding(.bottom, 14)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
+            }
             .overlay(alignment: .topTrailing) { presentationExit }
             .statusBarHidden(!showChrome)
         .fileImporter(

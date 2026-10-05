@@ -60,6 +60,25 @@ enum DrawingTool: Equatable, Hashable, CaseIterable {
         case .eraser: nil
         }
     }
+
+    /// The mode badge fills its chip with the tool's own colour, so the colour
+    /// is readable at a glance rather than needing the glyph to carry it —
+    /// a yellow glyph on a pale chip, or a black one on a dark chip, is exactly
+    /// what you cannot read out of the corner of your eye.
+    var badgeFill: Color {
+        switch self {
+        case .pen(let color), .highlighter(let color): color.swiftUIColor
+        case .eraser: Color(white: 0.86)
+        }
+    }
+
+    /// The glyph on that chip, in whichever of black or white survives on it.
+    var badgeInk: Color {
+        switch self {
+        case .pen(let color), .highlighter(let color): color.contrastingInk
+        case .eraser: Color(white: 0.18)
+        }
+    }
 }
 
 enum PenColor: String, Equatable, Hashable, CaseIterable {
@@ -106,4 +125,14 @@ enum PenColor: String, Equatable, Hashable, CaseIterable {
     }
 
     var swiftUIColor: Color { Color(uiColor) }
+
+    /// Black or white, whichever stays legible on top of this colour. Computed
+    /// rather than listed per case so a colour added later is handled too.
+    var contrastingInk: Color {
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        uiColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        // Rec. 601 luma — close enough for picking ink, and it puts the
+        // highlighter yellows and oranges on the black side where they belong.
+        return 0.299 * red + 0.587 * green + 0.114 * blue > 0.6 ? .black : .white
+    }
 }

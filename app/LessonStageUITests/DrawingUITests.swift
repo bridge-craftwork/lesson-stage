@@ -123,6 +123,36 @@ final class DrawingUITests: LessonStageUITestCase {
         XCTAssertTrue(expect(marks, toRead: "1"), "Dragging over text should leave a highlight")
     }
 
+    /// The corner badge is the only thing saying which tool is live once the
+    /// palette has faded, and the Pencil double-tap changes the tool without
+    /// bringing the palette back — so it has to track the tool on its own.
+    func testTheModeBadgeNamesTheLiveTool() {
+        let app = launchDrawing()
+        let badge = app.descendants(matching: .any)["toolModeBadge"].firstMatch
+        XCTAssertTrue(badge.waitForExistence(timeout: 10))
+        XCTAssertEqual(badge.label, "Pencil is set to Black pen")
+
+        app.buttons["tool-Yellow highlighter"].tap()
+        XCTAssertTrue(expect(badge, toRead: "Pencil is set to Yellow highlighter"))
+
+        app.buttons["tool-Eraser"].tap()
+        XCTAssertTrue(expect(badge, toRead: "Pencil is set to Eraser"),
+                      "The eraser is the mode worth being sure about")
+    }
+
+    /// With marking off the Pencil scrolls, so there is no mode to mistake and
+    /// nothing should be sitting over the lesson.
+    func testTheModeBadgeGoesWhenMarkingIsOff() {
+        let app = launchDrawing()
+        let badge = app.descendants(matching: .any)["toolModeBadge"].firstMatch
+        XCTAssertTrue(badge.waitForExistence(timeout: 10))
+
+        // The toggle is a button-styled `Toggle`, which SwiftUI surfaces as
+        // neither reliably — matched across element types, as elsewhere here.
+        app.descendants(matching: .any)["drawToggle"].tap()
+        XCTAssertTrue(waitForDisappearance(of: badge))
+    }
+
     /// A drag that never crosses any text commits no highlight. Read from the
     /// diagnostics panel — a mark count cannot tell "nothing spanned" from "the
     /// glyphs fell elsewhere".
