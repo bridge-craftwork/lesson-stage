@@ -483,9 +483,12 @@ extension PageCanvasProvider: CopyModeRouter {
             for dx in offset == 0 ? [0] : [-offset, offset] {
                 let x = min(max(point.x + dx, band.minX - slack), band.maxX + slack)
                 guard let word = page.selectionForWord(at: CGPoint(x: x, y: point.y)),
-                      !(word.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                      !(word.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      // PDFKit's word can span a column gutter; keep only the
+                      // card actually under this probe. See `TextRowLayout.piece`.
+                      let card = TextRowLayout.piece(of: word, at: x, on: page, along: band)
                 else { continue }
-                return word
+                return card
             }
         }
         return nil

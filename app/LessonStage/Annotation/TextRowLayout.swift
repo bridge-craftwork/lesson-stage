@@ -170,6 +170,59 @@ struct TextRowLayout {
     /// forgive starting a hair before the first card or after the last.
     static let edgeSlack: CGFloat = 2
 
+    /// The card within a "word" that is under `x`, or nil if `x` is in a gap.
+    ///
+    /// PDFKit's word can run straight across the gutter between two columns of
+    /// a lesson: on a two-column suit display ("7 5 2" beside "K 7 3") it reads
+    /// the whole row as one line with the gutter as a single space, and
+    /// `selectionForWord` answers "2 K" — 110pt wide — for a tap on either card
+    /// or anywhere between. So a word with white space inside it is split here.
+    ///
+    /// Geometrically, because nothing else on such a row can be trusted:
+    /// `characterIndex(at:)`, `characterBounds(at:)` and `selection(for: NSRange)`
+    /// disagree about which character is which. What does hold is that a rect
+    /// selects a character only when it crosses that character's middle, so a
+    /// sweep of thin slices finds each character's centre and whether it is
+    /// blank, and the runs of inked centres are the cards.
+    static func piece(of word: PDFSelection, at x: CGFloat, on page: PDFPage,
+                      along band: CGRect) -> PDFSelection? {
+        let text = (word.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.rangeOfCharacter(from: .whitespacesAndNewlines) != nil else { return word }
+
+        let box = word.bounds(for: page)
+        let strip = band.insetBy(dx: 0, dy: band.height / 4)
+        func slice(from minX: CGFloat, to maxX: CGFloat) -> PDFSelection? {
+            page.selection(for: CGRect(x: minX, y: strip.minY, width: maxX - minX, height: strip.height))
+        }
+
+        // A card ends at a blank centre, or — since the gutter's space is not
+        // always found this way (iOS misses it where macOS does not) — wherever
+        // two inked centres are further apart than one glyph could be wide.
+        var cards: [ClosedRange<CGFloat>] = []
+        var open: ClosedRange<CGFloat>?
+        for sx in stride(from: box.minX, through: box.maxX, by: 1) {
+            guard let found = slice(from: sx, to: sx + 1)?.string, !found.isEmpty else { continue }
+            if let card = open, sx - card.upperBound > band.height {
+                cards.append(card)
+                open = nil
+            }
+            if found.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if let card = open { cards.append(card) }
+                open = nil
+            } else {
+                open = open.map { $0.lowerBound...(sx + 1) } ?? sx...(sx + 1)
+            }
+        }
+        if let card = open { cards.append(card) }
+
+        for card in cards {
+            guard let selection = slice(from: card.lowerBound, to: card.upperBound) else { continue }
+            let bounds = selection.bounds(for: page)
+            if x >= bounds.minX - edgeSlack && x <= bounds.maxX + edgeSlack { return selection }
+        }
+        return nil
+    }
+
     /// The glyph band for one line of a selection, found by the line box it came
     /// from. Used to pull a highlight's rect back onto the text: PDFKit reports
     /// a selected line's bounds as its line box, which on a hand is more than

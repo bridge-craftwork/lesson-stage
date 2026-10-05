@@ -241,4 +241,33 @@ final class TextRowLayoutTests: XCTestCase {
             XCTAssertEqual(got, want)
         }
     }
+
+    // MARK: - A word across the gutter
+
+    /// Two columns of a suit display on one baseline — "7 5 2" beside "K 7 3",
+    /// as on the "Watching Out for the Opponents" handout. PDFKit can read the
+    /// gutter as one space and answer "2 K" for a tap on either card; a tap must
+    /// still mark only the card it was on, and a tap out in the gutter nothing.
+    func testATapBesideTheGutterTakesOnlyItsOwnCard() throws {
+        let font = UIFont(name: "Times New Roman", size: 18) ?? .systemFont(ofSize: 18)
+        let data = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 612, height: 792)).pdfData { context in
+            context.beginPage()
+            "DECLARER: 7 5 2".draw(at: CGPoint(x: 72, y: 300), withAttributes: [.font: font])
+            "K 7 3".draw(at: CGPoint(x: 400, y: 300), withAttributes: [.font: font])
+        }
+        let page = try XCTUnwrap(PDFDocument(data: data)?.page(at: 0))
+        let layout = TextRowLayout(page: page)
+
+        func card(at x: CGFloat) -> String? {
+            guard let y = layout.rows.first?.band.midY,
+                  let row = layout.row(covering: CGPoint(x: x, y: y)),
+                  let word = page.selectionForWord(at: CGPoint(x: x, y: y)) else { return nil }
+            return TextRowLayout.piece(of: word, at: x, on: page, along: row.band)?.string
+        }
+        func width(_ text: String) -> CGFloat { (text as NSString).size(withAttributes: [.font: font]).width }
+
+        XCTAssertEqual(card(at: 72 + width("DECLARER: 7 5 ") + width("2") / 2), "2")
+        XCTAssertEqual(card(at: 400 + width("K") / 2), "K")
+        XCTAssertNil(card(at: 300), "A tap out in the gutter should take nothing")
+    }
 }
