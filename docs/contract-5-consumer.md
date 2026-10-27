@@ -2,18 +2,17 @@
 
 Working notes for the consumer side of **Contract 5: PDF Lesson Attachments**.
 
-**The contract itself lives in lesson-studio**, at
-`documentation/contracts/pdf-attachments.md` — payload version `1`, last
-reviewed 2026-07-23. That document is normative; this one is not. This is only
-what the contract means *for this app*, plus the iOS-specific details it does
-not cover.
+**The contract itself lives in this repo**, at
+[`contracts/pdf-attachments.md`](contracts/pdf-attachments.md) — payload
+versions `1` and `2`, last reviewed 2026-10-27. That document is normative; this
+one is not. This is only what the contract means *for this app*, plus the
+iOS-specific details it does not cover.
 
-> **Pending handover.** The contract's own *Ownership handover* section says it
-> should move to sit beside the presentation tool once that tool exists, since
-> this app becomes its primary consumer. This repo is that tool. The production
-> side stays in lesson-studio — the click map can only be generated where the
-> print engine runs. Move the document here when Phase 3 lands, not before:
-> owning a contract you cannot yet honour helps nobody.
+> **Version 2 isn't read yet.** `LessonPayload` accepts version 1 only, so a
+> `pbn`-profile PDF from pbn-to-pdf opens in plain-PDF mode. That fallback is
+> what the contract asks for, so it's correct. Reading version 2 is step 3 of
+> [contract-5-shared-plan.md](contract-5-shared-plan.md): `body` becomes
+> optional, there's a `board` kind, and dispatch is on `sourceFormat`.
 
 ---
 

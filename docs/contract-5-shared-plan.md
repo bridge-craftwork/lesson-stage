@@ -1,6 +1,9 @@
 # Plan: Contract 5 becomes a shared contract
 
-**Status:** Proposed, 2026-10-27. Nothing below is built yet.
+**Status:** Approved 2026-10-27. Step 1 is done: all eight decisions were
+accepted as recommended, and the contract has moved to
+[contracts/pdf-attachments.md](contracts/pdf-attachments.md). Steps 2–4 aren't
+started.
 **Repos involved:** lesson-stage (new home), lesson-studio (current home,
 producer), pbn-to-pdf (new producer), bridge-viewer (new producer and consumer).
 
@@ -29,8 +32,8 @@ If pbn-to-pdf follows the contract:
 
 The v1 text assumes the source is lesson markdown: `/Source` is `lesson-source.md`,
 `blocks[].body` is Contract 1 DSL, `kind` comes from Contract 1. A PBN-sourced
-PDF has none of that. These decisions need settling in a contract review before
-any code is written. Each has a recommendation.
+PDF has none of that. These decisions were settled in the 2026-10-27 review, all as recommended.
+The contract's *Resolved* section records them.
 
 1. **Home.** Move to `lesson-stage/docs/contracts/pdf-attachments.md`.
    lesson-studio keeps a short stub at the old path that points here, because
@@ -65,7 +68,7 @@ any code is written. Each has a recommendation.
 
 ## Steps
 
-### 1. Review and move the contract (lesson-stage, lesson-studio)
+### 1. Review and move the contract (lesson-stage, lesson-studio) — done
 
 - Settle the eight decisions above. Record the outcome in a dated *Resolved*
   section, as the 2026-07-23 review did.
