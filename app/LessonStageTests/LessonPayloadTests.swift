@@ -37,7 +37,7 @@ final class LessonPayloadTests: XCTestCase {
         XCTAssertEqual(map.blocks.map(\.index), [0, 1, 2, 3])
         XCTAssertEqual(map.blocks.map(\.kind), ["auction", "hand", "response-box", "auction"])
         XCTAssertTrue(map.unlocatedIndices.isEmpty)
-        XCTAssertTrue(map.blocks[1].body.contains("A Q 9 5 4"), "Hand body carries the cards")
+        XCTAssertEqual(map.blocks[1].body?.contains("A Q 9 5 4"), true, "Hand body carries the cards")
     }
 
     func testBoardJoinSplitsByKind() throws {
@@ -93,7 +93,7 @@ final class LessonPayloadTests: XCTestCase {
         // Block 1 is the hand, joined to board 1.
         let resolved = try XCTUnwrap(payload.resolve(index: 1))
         XCTAssertEqual(resolved.kind, "hand")
-        XCTAssertTrue(resolved.body.contains("A Q 9 5 4"))
+        XCTAssertEqual(resolved.body?.contains("A Q 9 5 4"), true)
         XCTAssertEqual(resolved.pbn?.contains("[Board \"1\"]"), true, "The hand carries its board's PBN")
     }
 
@@ -125,6 +125,64 @@ final class LessonPayloadTests: XCTestCase {
 
         XCTAssertEqual(message["kind"] as? String, "hand")
         XCTAssertNotNil(message["blockBody"] as? String)
+        XCTAssertNotNil(message["pbn"] as? String)
+    }
+
+    // MARK: - The pbn profile (pbn-to-pdf, payload version 2)
+
+    private func handRecord() throws -> PDFDocument {
+        try Fixtures.document(Fixtures.handRecord)
+    }
+
+    func testPBNProfileAttachmentsAreFoundByRelationship() throws {
+        let files = LessonAttachments.files(in: try handRecord())
+        let byName = Dictionary(uniqueKeysWithValues: files.map { ($0.filename, $0.relationship) })
+        XCTAssertEqual(byName, [
+            "ABS2-2 Promotion and Length practice deals.pbn": "Source",
+            "lesson-provenance.json": "Supplement",
+            "lesson-blocks.json": "Data",
+            "lesson-hands.pbn": "Data",
+        ])
+    }
+
+    func testPBNProfileLoadsAsVersionTwoBoards() throws {
+        let map = try XCTUnwrap(LessonPayload.load(from: try handRecord())).map
+        XCTAssertEqual(map.version, 2)
+        XCTAssertEqual(map.blocks.map(\.kind), ["board", "board", "board", "board"])
+        XCTAssertEqual(map.blocks.map(\.boardNumber), [1, 2, 3, 4])
+        XCTAssertEqual(map.blocks.map(\.sourceBoard), ["1", "2", "3", "4"])
+        XCTAssertTrue(map.blocks.allSatisfy { $0.body == nil }, "The pbn profile has no body")
+    }
+
+    func testPBNProfileRectsMatchTheLinks() throws {
+        let document = try handRecord()
+        let map = try XCTUnwrap(LessonPayload.load(from: document)).map
+        let targets = LessonBlockLinks.targets(in: document)
+        XCTAssertEqual(targets.count, map.blocks.count)
+        for target in targets {
+            let rect = try XCTUnwrap(map.blocks.first { $0.index == target.index }?.pageRect)
+            XCTAssertEqual(rect.minX, target.bounds.minX, accuracy: 0.5)
+            XCTAssertEqual(rect.minY, target.bounds.minY, accuracy: 0.5)
+            XCTAssertEqual(rect.width, target.bounds.width, accuracy: 0.5)
+            XCTAssertEqual(rect.height, target.bounds.height, accuracy: 0.5)
+        }
+    }
+
+    /// A tapped board crosses the seam with its whole record, commentary and
+    /// all, and no `blockBody`.
+    func testPBNProfileBoardResolvesToItsWholeRecord() throws {
+        let payload = try XCTUnwrap(LessonPayload.load(from: try handRecord()))
+        let resolved = try XCTUnwrap(payload.resolve(index: 2))
+        XCTAssertEqual(resolved.kind, "board")
+        XCTAssertNil(resolved.body)
+        let record = try XCTUnwrap(resolved.pbn)
+        XCTAssertEqual(PBN.boardNumber(of: record), 3)
+        XCTAssertTrue(record.contains("[Contract \"3NT\"]"))
+        XCTAssertTrue(record.contains("[Deal \""), "A full deal, for card play")
+
+        let message = resolved.message
+        XCTAssertEqual(message["kind"] as? String, "board")
+        XCTAssertNil(message["blockBody"], "No body to send")
         XCTAssertNotNil(message["pbn"] as? String)
     }
 

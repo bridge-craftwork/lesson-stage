@@ -14,7 +14,9 @@ struct LessonPayload {
     /// omitted entirely then). Parsing into a deal model is the popout's job.
     let pbn: String?
 
-    static let supportedVersion = 1
+    /// Version 1 is lesson-studio's lesson PDFs; version 2 adds the `pbn`
+    /// profile pbn-to-pdf produces. Anything else is plain-PDF mode.
+    static let supportedVersions: Set<Int> = [1, 2]
     private static let logger = Logger(subsystem: "com.popperbiz.LessonStage", category: "contract5")
 
     static func load(from document: PDFDocument) -> LessonPayload? {
@@ -33,7 +35,7 @@ struct LessonPayload {
             logger.error("Click map parse failed: \(error.localizedDescription)")
             return nil
         }
-        guard map.version == supportedVersion else {
+        guard supportedVersions.contains(map.version) else {
             // Do not best-effort-parse a future payload.
             logger.error("Click map version \(map.version) unsupported; plain-PDF mode")
             return nil
@@ -60,15 +62,18 @@ struct LessonPayload {
     struct ResolvedBlock: Equatable {
         let index: Int
         let kind: String
-        let body: String
+        /// The DSL body, or nil for a `board` block, which has none.
+        let body: String?
         /// The single board's PBN record this block joins to, or nil for a block
         /// with no deal bound (an auction with `deal: null`, a response box).
         let pbn: String?
 
         /// The JSON payload posted to the popout: `{ kind, blockBody, pbn }`,
-        /// plus the index for debugging.
+        /// plus the index for debugging. `blockBody` is left out when the block
+        /// has none.
         var message: [String: Any] {
-            var message: [String: Any] = ["kind": kind, "blockBody": body, "index": index]
+            var message: [String: Any] = ["kind": kind, "index": index]
+            if let body { message["blockBody"] = body }
             if let pbn { message["pbn"] = pbn }
             return message
         }

@@ -28,6 +28,23 @@ final class PBNTests: XCTestCase {
         XCTAssertEqual(PBN.records(in: twoBoards).count, 2)
     }
 
+    func testABlankLineInsideCommentaryDoesNotSplitTheRecord() {
+        let commented = """
+        [Board "1"]
+        [Deal "N:AK.QJ.T9.8765432 - - -"]
+        {Cash your winners.
+
+        Then run the clubs.}
+        [Result "9"]
+
+        [Board "2"]
+        """
+        let records = PBN.records(in: commented)
+        XCTAssertEqual(records.count, 2)
+        XCTAssertTrue(records[0].contains("Then run the clubs.}"))
+        XCTAssertTrue(records[0].hasSuffix("[Result \"9\"]"), "The record runs past the commentary")
+    }
+
     func testToleratesCRLFLineEndings() {
         let crlf = twoBoards.replacingOccurrences(of: "\n", with: "\r\n")
         XCTAssertEqual(PBN.records(in: crlf).count, 2, "Windows line endings still split")

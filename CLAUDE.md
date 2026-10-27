@@ -18,9 +18,13 @@ proposed here. `docs/contract-5-consumer.md` covers what it means for this app:
 annotations for hit-testing, attachments once per load, and plain-PDF mode on
 every failure.
 
-`LessonPayload` still accepts version 1 only, so a `pbn`-profile PDF opens in
-plain-PDF mode. That's the contract's fallback, so it's correct. Reading
-version 2 is step 3 of [docs/contract-5-shared-plan.md](docs/contract-5-shared-plan.md).
+`LessonPayload` accepts both versions. A pbn-to-pdf `board` block has a deal
+and no body; the popout shows it like a hand, and plays it when the deal is
+complete. Fixtures for each profile are in `fixtures/`. Two things to keep:
+`PBN.records` splits only on blank lines outside `{…}`, because pbn-to-pdf
+copies records verbatim, commentary included. And the popout bundle in
+`app/LessonStage/Popout/Resources` is built by `popout/sync-to-app.sh`; rerun
+it after any change under `popout/src`.
 
 ## Sister repos
 
