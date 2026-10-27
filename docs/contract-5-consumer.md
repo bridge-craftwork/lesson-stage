@@ -8,11 +8,28 @@ versions `1` and `2`, last reviewed 2026-10-27. That document is normative; this
 one is not. This is only what the contract means *for this app*, plus the
 iOS-specific details it does not cover.
 
-> **Version 2 isn't read yet.** `LessonPayload` accepts version 1 only, so a
-> `pbn`-profile PDF from pbn-to-pdf opens in plain-PDF mode. That fallback is
-> what the contract asks for, so it's correct. Reading version 2 is step 3 of
-> [contract-5-shared-plan.md](contract-5-shared-plan.md): `body` becomes
-> optional, there's a `board` kind, and dispatch is on `sourceFormat`.
+## Two profiles, one reader
+
+`LessonPayload` accepts payload versions 1 and 2. The same code reads both:
+
+| | Lesson PDF (lesson-studio) | PBN rendering (pbn-to-pdf) |
+|---|---|---|
+| `version` | 1 | 2 |
+| `kind` | `hand`, `auction`, `response-box`, … | `board` |
+| `body` | the block's DSL | absent |
+| join | `board` on hands, `deal` on auctions | `board` on every block |
+| `/Source` | `lesson-source.md` | the input `.pbn`, under its own name |
+
+No separate dispatch on provenance's `sourceFormat` is needed. The version
+says whether `body` may be absent, and the kind says what the block is. A
+`board` block crosses the seam as `{ kind: "board", pbn }`, with no `blockBody`.
+The popout shows its deal like a hand's, and since pbn-to-pdf records are
+usually complete deals with contracts, card play works on them.
+`fixtures/abs2-2-hand-record.pdf` is the known-good PBN-profile fixture.
+
+**Records may hold blank lines.** pbn-to-pdf copies each record verbatim, and
+`{…}` commentary often runs to several paragraphs. `PBN.records` therefore
+splits only on blank lines outside braces.
 
 ---
 

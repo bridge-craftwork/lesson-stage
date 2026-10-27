@@ -26,7 +26,11 @@ const SUIT_KEY = { S: 'spades', H: 'hearts', D: 'diamonds', C: 'clubs' }
 const EMPTY_DEAL = { contract: null, declarer: null, openingLeader: null, hands: { N: null, E: null, S: null, W: null } }
 
 const deal = ref(DEMO_DEAL)
-/** What kind of block was tapped — hand / auction / response-box. */
+/**
+ * What kind of block was tapped — hand / auction / response-box from a lesson,
+ * or board from a pbn-to-pdf rendering (Contract 5's `pbn` profile), which has
+ * a deal and no body.
+ */
 const kind = ref(null)
 /** The block's source text (the lesson DSL), shown for non-hand blocks. */
 const blockBody = ref('')
@@ -48,7 +52,7 @@ const isComplete = computed(
 )
 
 const kindLabel = computed(() => {
-  const labels = { hand: 'Hand', auction: 'Auction', 'response-box': 'Responses' }
+  const labels = { hand: 'Hand', auction: 'Auction', 'response-box': 'Responses', board: 'Board' }
   return labels[kind.value] || (kind.value ? kind.value : 'Deal')
 })
 
@@ -60,9 +64,11 @@ const headerLabel = computed(() => {
 const hasAnyHand = computed(() => SEATS.some((seat) => handCardCount(deal.value.hands?.[seat]) > 0))
 
 // A block shows the deal table when it's a full playable deal (card play) or a
-// hand block with cards to show; anything else (an auction, a response box)
-// shows its body text instead. This is what makes each kind read differently.
-const showDeal = computed(() => isComplete.value || (kind.value === 'hand' && hasAnyHand.value))
+// hand or board block with cards to show; anything else (an auction, a response
+// box) shows its body text instead. This is what makes each kind read differently.
+const showDeal = computed(
+  () => isComplete.value || ((kind.value === 'hand' || kind.value === 'board') && hasAnyHand.value)
+)
 
 // ---- Block body (auctions, response boxes) --------------------------------
 // A stopgap render of the lesson DSL: strip the leading `key: value` config,

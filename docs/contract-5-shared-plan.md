@@ -2,8 +2,9 @@
 
 **Status:** Approved 2026-10-27. Step 1 is done: all eight decisions were
 accepted as recommended, and the contract has moved to
-[contracts/pdf-attachments.md](contracts/pdf-attachments.md). Steps 2–4 aren't
-started.
+[contracts/pdf-attachments.md](contracts/pdf-attachments.md). Steps 2–4 are
+built and in review: pbn-to-pdf#64 (with bridge-encodings#37),
+lesson-stage#4, and bridge-viewer#4.
 **Repos involved:** lesson-stage (new home), lesson-studio (current home,
 producer), pbn-to-pdf (new producer), bridge-viewer (new producer and consumer).
 

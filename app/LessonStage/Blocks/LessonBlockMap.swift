@@ -2,7 +2,12 @@ import CoreGraphics
 import Foundation
 
 /// The Contract 5 click map (`lesson-blocks.json`) — block bodies, positions,
-/// and the board join. Decoded from the embedded file; version 1.
+/// and the board join. Decoded from the embedded file; versions 1 and 2.
+///
+/// Version 2 is version 1 plus profiles. A lesson PDF (`lesson-dsl` profile,
+/// from lesson-studio) has a DSL `body` on every block. A PBN rendering (`pbn`
+/// profile, from pbn-to-pdf) has `kind: "board"` blocks with no body, since
+/// the deal is the content, and always a `board`.
 ///
 /// Unknown fields are ignored (that is the contract: adding one is a MINOR
 /// change), which `JSONDecoder` does for free — `pageSize`, `coordinateSpace`,
@@ -20,7 +25,11 @@ struct LessonBlockMap: Decodable {
     struct Block: Decodable {
         let index: Int
         let kind: String
-        let body: String
+        /// The block's DSL source. Absent in the `pbn` profile.
+        let body: String?
+        /// The board's original `[Board]` value in the source file, for
+        /// labelling it as the page does. Optional; `pbn` profile only so far.
+        let sourceBoard: String?
 
         /// 1-based in the file; absent for an unlocated block.
         let page: Int?

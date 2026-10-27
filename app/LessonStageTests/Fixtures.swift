@@ -7,6 +7,9 @@ import XCTest
 /// simulator where the test runner shares the host filesystem.
 enum Fixtures {
     static let newMinorForcing = "new-minor-forcing.pdf"
+    /// A pbn-to-pdf hand record (`pbn` profile, payload version 2): four full
+    /// deals with contracts, and multi-paragraph commentary in the records.
+    static let handRecord = "abs2-2-hand-record.pdf"
 
     static func url(_ name: String) -> URL {
         // .../app/LessonStageTests/Fixtures.swift → up to the repo root, /fixtures.
