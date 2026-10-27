@@ -9,16 +9,18 @@ ported to SwiftUI or Rust.
 
 ## Contract 5
 
-What this app reads is defined by Contract 5 (PDF lesson attachments). The
-normative text is still in lesson-studio, at
-`../lesson-studio/documentation/contracts/pdf-attachments.md`.
-`docs/contract-5-consumer.md` covers what it means here: annotations for
-hit-testing, attachments once per load, and plain-PDF mode on every failure.
+What this app reads is defined by Contract 5 (PDF lesson attachments), which
+**lives here**: [docs/contracts/pdf-attachments.md](docs/contracts/pdf-attachments.md).
+It moved from lesson-studio on 2026-10-27 and is shared by two producers:
+lesson-studio (`lesson-dsl` profile, payload version 1) and pbn-to-pdf (`pbn`
+profile, version 2, implementation pending). Changes either producer needs are
+proposed here. `docs/contract-5-consumer.md` covers what it means for this app:
+annotations for hit-testing, attachments once per load, and plain-PDF mode on
+every failure.
 
-**Planned:** the contract moves here and becomes shared, with pbn-to-pdf as a
-second producer (a PBN profile, payload version 2) and bridge-viewer as a
-second consumer. See [docs/contract-5-shared-plan.md](docs/contract-5-shared-plan.md).
-Until then, `LessonPayload` accepts version 1 only. That's correct, not a gap.
+`LessonPayload` still accepts version 1 only, so a `pbn`-profile PDF opens in
+plain-PDF mode. That's the contract's fallback, so it's correct. Reading
+version 2 is step 3 of [docs/contract-5-shared-plan.md](docs/contract-5-shared-plan.md).
 
 ## Sister repos
 
